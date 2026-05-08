@@ -1,0 +1,41 @@
+# 图生视频专用实例组（高显存 GPU）
+# workflows: image_to_video
+
+nodes:
+  - repo: "https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git"
+    pip: ["imageio", "imageio-ffmpeg"]
+  - repo: "https://github.com/city96/ComfyUI-WanVideo.git"
+    pip: ["diffusers", "accelerate"]
+
+models:
+  - url: "https://huggingface.co/Comfy-Org/wan2.2_i2v_A14b/resolve/main/high_noise_rank0-of-0008.safetensors"
+    filename: "wan2.2_i2v_A14b_high_noise_scaled_fp8_e4m3_lightx2v_4step_comfyui_1030.safetensors"
+    subfolder: "checkpoints"
+
+  - url: "https://huggingface.co/Comfy-Org/wan2.2_i2v_A14b/resolve/main/low_noise_rank0-of-0008.safetensors"
+    filename: "wan2.2_i2v_A14b_low_noise_scaled_fp8_e4m3_lightx2v_4step_comfyui.safetensors"
+    subfolder: "checkpoints"
+
+  - url: "https://huggingface.co/yeoliver/NSFW-22/resolve/main/NSFW-22-H-e8.safetensors"
+    filename: "NSFW-22-H-e8.safetensors"
+    subfolder: "loras"
+
+  - url: "https://huggingface.co/yeoliver/NSFW-22/resolve/main/NSFW-22-L-e8.safetensors"
+    filename: "NSFW-22-L-e8.safetensors"
+    subfolder: "loras"
+
+  - url: "https://huggingface.co/ComfyO/POVkissing_WAN22_I2V/resolve/main/POVkissing_WAN22_I2V_high_noise.safetensors"
+    filename: "POVkissing_WAN22_I2V_high_noise.safetensors"
+    subfolder: "loras"
+
+  - url: "https://huggingface.co/ComfyO/POVkissing_WAN22_I2V/resolve/main/POVkissing_WAN22_I2V_low_noise.safetensors"
+    filename: "POVkissing_WAN22_I2V_low_noise.safetensors"
+    subfolder: "loras"
+
+  - url: "https://huggingface.co/Comfy-Org/wan2.2_i2v_A14b/resolve/main/umt5_xxl_fp8_e4m3fn_scaled.safetensors"
+    filename: "umt5_xxl_fp8_e4m3fn_scaled.safetensors"
+    subfolder: "clip_vision"
+
+  - url: "https://huggingface.co/Wan-AI/Wan2.1-VAE/resolve/main/vae.pt"
+    filename: "wan_2.1_vae.safetensors"
+    subfolder: "vae"

@@ -1,0 +1,21 @@
+# 人脸合成专用实例组
+# workflows: face_combine
+
+nodes:
+  - repo: "https://github.com/Fannovel16/ControlNet-pp.git"
+    pip: []
+  - repo: "https://github.com/AUTOMATIC1111/stable-diffusion-webui.git"
+    pip: ["insightface", "onnxruntime"]
+
+models:
+  - url: "https://huggingface.co/lllyas1234/ponyF6RealisticV6/resolve/main/ponyF6RealisticV6PonyV6.safetensors"
+    filename: "cyberrealistic-pony-v17.safetensors"
+    subfolder: "checkpoints"
+
+  - url: "https://huggingface.co/Sauravkv/FaceSwap/resolve/main/insightface_037.onnx"
+    filename: "inswapper_128.onnx"
+    subfolder: "checkpoints"
+
+  - url: "https://huggingface.co/Mikubill/cfd-models/resolve/main/codeformer.pth"
+    filename: "codeformer.pth"
+    subfolder: "checkpoints"

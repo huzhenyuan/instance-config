@@ -1,0 +1,23 @@
+# AI 视频编辑专用实例组（Qwen）
+# workflows: video_edit
+
+nodes:
+  - repo: "https://github.com/kijai/ComfyUI-QwenEdit.git"
+    pip: ["torch", "transformers", "peft"]
+
+models:
+  - url: "https://huggingface.co/Qwen/Qwen-Image-Edit-2511/resolve/main/qwen_image_edit_2511_fp8_e4m3fn.safetensors"
+    filename: "qwen_image_edit_2511_fp8.safetensors"
+    subfolder: "checkpoints"
+
+  - url: "https://huggingface.co/Qwen/Qwen-2.5-VL-7B-Instruct/resolve/main/model.safetensors"
+    filename: "qwen_25_vl_7b.safetensors"
+    subfolder: "clip_vision"
+
+  - url: "https://huggingface.co/Qwen/Qwen-Image-Edit-2511/resolve/main/qwen_image_vae.safetensors"
+    filename: "qwen_image_vae.safetensors"
+    subfolder: "vae"
+
+  - url: "https://huggingface.co/ComfyO/Qwen-Image-Edit-Lightning-4steps-V1.0/resolve/main/Qwen-Image-Edit-Lightning-4steps-V1.0.safetensors"
+    filename: "Qwen-Image-Edit-Lightning-4steps-V1.0.safetensors"
+    subfolder: "loras"
