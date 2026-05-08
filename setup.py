@@ -1,34 +1,47 @@
 #!/usr/bin/env python3
-"""Instance setup script.
+"""Instance setup + agent runner.
 
 Usage:
     python3 setup.py <group_name>
 
-Reads groups/<group_name>.yaml, installs custom ComfyUI nodes and downloads
-model files into the standard ComfyUI directories.
+Phase 1 – Provision: installs custom ComfyUI nodes and downloads model files.
+Phase 2 – Agent loop: registers with the scheduler server, then heartbeats and
+           executes ComfyUI tasks until the process is terminated.
 
-Environment variables (optional overrides):
+Environment variables:
     CUSTOM_NODES_DIR  — default: /workspaces/ComfyUI/custom_nodes
     MODELS_DIR        — default: /workspaces/ComfyUI/models
+    SERVER_URL        — scheduler server base URL (default: http://localhost:8000)
+    CONTAINER_ID      — instance identifier
+    PUBLIC_IPADDR     — public IP reported during registration
+    API_SECRET        — HMAC secret for request signing (optional)
+    HEARTBEAT_INTERVAL — seconds between heartbeats (default: 30)
 """
 
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import os
 import subprocess
 import sys
+import time
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 # ---------------------------------------------------------------------------
-# Bootstrap pyyaml if not present
+# Bootstrap dependencies if not present
 # ---------------------------------------------------------------------------
-try:
-    import yaml
-except ImportError:
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "pyyaml", "-q"])
-    import yaml  # type: ignore[no-redef]
+for _pkg in ("pyyaml", "httpx"):
+    try:
+        __import__("yaml" if _pkg == "pyyaml" else _pkg)
+    except ImportError:
+        subprocess.check_call([sys.executable, "-m", "pip", "install", _pkg, "-q"])
+
+import yaml          # type: ignore[no-redef]
+import httpx         # type: ignore[no-redef]
 
 logging.basicConfig(
     level=logging.INFO,
@@ -62,8 +75,18 @@ async def _run(cmd: str, timeout: int = 600) -> bool:
     return proc.returncode == 0
 
 
+def _make_auth_headers() -> dict[str, str]:
+    """生成 X-Timestamp + X-Signature 认证头（API_SECRET 为空时跳过认证）。"""
+    secret = os.getenv("API_SECRET", "")
+    if not secret:
+        return {}
+    ts = str(int(time.time()))
+    sig = hashlib.md5(f"{ts}{secret}".encode()).hexdigest()
+    return {"X-Timestamp": ts, "X-Signature": sig}
+
+
 # ---------------------------------------------------------------------------
-# Node installation
+# Phase 1: Node installation
 # ---------------------------------------------------------------------------
 
 async def install_nodes(nodes: list[dict], custom_nodes_dir: Path) -> None:
@@ -91,7 +114,7 @@ async def install_nodes(nodes: list[dict], custom_nodes_dir: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Model downloading
+# Phase 1: Model downloading
 # ---------------------------------------------------------------------------
 
 async def download_models(models: list[dict], models_dir: Path) -> None:
@@ -121,10 +144,6 @@ async def download_models(models: list[dict], models_dir: Path) -> None:
             dest_file.unlink(missing_ok=True)
 
 
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
-
 async def setup(group_name: str) -> None:
     config_path = REPO_ROOT / "groups" / f"{group_name}.yaml"
     if not config_path.exists():
@@ -141,17 +160,231 @@ async def setup(group_name: str) -> None:
     models_dir = Path(os.getenv("MODELS_DIR", DEFAULT_MODELS_DIR))
 
     logger.info("=== Setup: group=%s, nodes=%d, models=%d ===", group_name, len(nodes), len(models))
-
     if nodes:
         await install_nodes(nodes, custom_nodes_dir)
     if models:
         await download_models(models, models_dir)
-
     logger.info("=== Setup complete: group=%s ===", group_name)
 
+
+# ---------------------------------------------------------------------------
+# Phase 2: Agent loop
+# ---------------------------------------------------------------------------
+
+@dataclass
+class ComfyUIMessage:
+    prompt_id: str
+    status: str  # "pending" | "in_progress" | "completed" | "error"
+    outputs: dict[str, Any] = field(default_factory=dict)
+    error: str | None = None
+
+
+class ComfyUIClient:
+    def __init__(self, ip: str = "127.0.0.1", port: int = 18188, timeout: float = 120.0):
+        self._base = f"http://{ip}:{port}"
+        self._timeout = timeout
+
+    async def submit_prompt(self, graph: dict[str, Any], client_id: str) -> str:
+        async with httpx.AsyncClient(timeout=self._timeout) as c:
+            resp = await c.post(f"{self._base}/prompt", json={"prompt": graph, "client_id": client_id})
+            resp.raise_for_status()
+        prompt_id: str = resp.json().get("prompt_id", "")
+        logger.info("[ComfyUI] prompt accepted, id=%s", prompt_id)
+        return prompt_id
+
+    async def get_history(self, prompt_id: str) -> ComfyUIMessage:
+        async with httpx.AsyncClient(timeout=self._timeout) as c:
+            resp = await c.get(f"{self._base}/history/{prompt_id}")
+            resp.raise_for_status()
+            data = resp.json()
+        entry = data.get(prompt_id, {})
+        outputs = entry.get("outputs", {})
+        status = "completed" if entry.get("status") else "in_progress"
+        error: str | None = None
+        images: list[dict] = []
+        for node_out in outputs.values():
+            if isinstance(node_out, dict):
+                if node_out.get("error"):
+                    error = node_out["error"]
+                    status = "error"
+                for img in node_out.get("images", []):
+                    images.append({
+                        "filename": img.get("filename", ""),
+                        "subfolder": img.get("subfolder", ""),
+                        "type": img.get("type", "output"),
+                    })
+        return ComfyUIMessage(prompt_id=prompt_id, status=status, outputs={"images": images}, error=error)
+
+
+class InstanceAgent:
+    _AGENT_VERSION = "1.0.0"
+
+    def __init__(self, server_url: str, heartbeat_interval: int = 30, poll_interval: int = 5, group: str = ""):
+        self._server = server_url.rstrip("/")
+        self._instance_id = os.getenv("CONTAINER_ID", "")
+        self._group = group
+        self._heartbeat_interval = heartbeat_interval
+        self._poll_interval = poll_interval
+        self._status = "idle"
+        self._current_task_id: str | None = None
+        self._current_task: dict | None = None
+        self._stop = asyncio.Event()
+        self._active_tasks: list[asyncio.Task] = []
+
+    async def start(self) -> None:
+        if not await self._register():
+            logger.error("无法注册到服务端，agent 退出")
+            return
+        logger.info("Agent 已启动: instance_id=%s, server=%s", self._instance_id, self._server)
+        hb = asyncio.create_task(self._heartbeat_loop())
+        poll = asyncio.create_task(self._poll_loop())
+        try:
+            await self._stop.wait()
+        finally:
+            hb.cancel()
+            poll.cancel()
+            for t in self._active_tasks:
+                t.cancel()
+            logger.info("Agent 已停止")
+
+    async def _register(self) -> bool:
+        payload = {
+            "instance_id": self._instance_id,
+            "ip_address": os.getenv("PUBLIC_IPADDR", ""),
+            "agent_version": self._AGENT_VERSION,
+            "group": self._group,
+        }
+        try:
+            async with httpx.AsyncClient(base_url=self._server, timeout=httpx.Timeout(10.0, connect=5.0)) as c:
+                resp = await c.post("/instance/register", json=payload, headers=_make_auth_headers())
+                if resp.status_code == 200:
+                    return True
+                logger.error("注册失败: %d %s", resp.status_code, resp.text)
+        except Exception as exc:
+            logger.error("注册异常: %s", exc)
+        return False
+
+    async def _heartbeat_loop(self) -> None:
+        while not self._stop.is_set():
+            try:
+                async with httpx.AsyncClient(base_url=self._server, timeout=httpx.Timeout(10.0)) as c:
+                    resp = await c.post("/instance/health", headers=_make_auth_headers(), json={
+                        "instance_id": self._instance_id,
+                        "status": self._status,
+                        "current_task_id": self._current_task_id,
+                    })
+                    if resp.status_code != 200:
+                        logger.warning("[心跳] 异常: %d", resp.status_code)
+            except Exception as exc:
+                logger.warning("[心跳] 失败: %s", exc)
+            try:
+                await asyncio.wait_for(self._stop.wait(), timeout=self._heartbeat_interval)
+            except asyncio.TimeoutError:
+                pass
+
+    async def _poll_loop(self) -> None:
+        while not self._stop.is_set():
+            if self._status == "idle" and not self._current_task:
+                try:
+                    async with httpx.AsyncClient(base_url=self._server, timeout=httpx.Timeout(10.0)) as c:
+                        resp = await c.post("/instance/fetch_task", json={"instance_id": self._instance_id}, headers=_make_auth_headers())
+                        if resp.status_code == 200:
+                            tasks = resp.json().get("tasks") or []
+                            if tasks:
+                                self._current_task = tasks[0]
+                                self._status = "computing"
+                                t = asyncio.create_task(self._execute_task())
+                                self._active_tasks.append(t)
+                except Exception as exc:
+                    logger.warning("[轮询] 失败: %s", exc)
+            try:
+                await asyncio.wait_for(self._stop.wait(), timeout=self._poll_interval)
+            except asyncio.TimeoutError:
+                pass
+
+    async def _execute_task(self) -> None:
+        task = self._current_task
+        if not task:
+            return
+        task_id: str = task["task_id"]
+        self._current_task_id = task_id
+        comfyui = ComfyUIClient(ip="localhost", port=18188)
+        try:
+            logger.info("执行任务: %s", task_id)
+            payload = task.get("payload", {})
+            graph = payload.get("graph") or payload.get("prompt") or payload
+            prompt_id = await comfyui.submit_prompt(graph, client_id=f"container-{self._instance_id}")
+            if not prompt_id:
+                raise ValueError("ComfyUI 未返回 prompt_id")
+            msg = await self._poll_history(comfyui, prompt_id)
+            result: dict = {"status": msg.status, "prompt_id": prompt_id, "outputs": msg.outputs}
+            if msg.error:
+                result["error"] = msg.error
+            if not await self._push_result(task_id, result):
+                await self._push_result(task_id, {"status": "failed", "error": "result push failed"})
+        except Exception as exc:
+            logger.error("任务 %s 失败: %s", task_id, exc)
+            await self._push_result(task_id, {"status": "failed", "error": str(exc)})
+        finally:
+            self._current_task = None
+            self._current_task_id = None
+            self._status = "idle"
+            self._active_tasks = [t for t in self._active_tasks if not t.done()]
+
+    async def _poll_history(self, comfyui: ComfyUIClient, prompt_id: str, max_attempts: int = 360) -> ComfyUIMessage:
+        for attempt in range(max_attempts):
+            try:
+                msg = await comfyui.get_history(prompt_id)
+                if msg.status != "in_progress":
+                    return msg
+            except Exception as exc:
+                logger.debug("[历史轮询] 第%d次异常: %s", attempt + 1, exc)
+            if attempt > 0 and attempt % 12 == 0:
+                logger.info("[历史轮询] prompt_id=%s 等待中... (%ds)", prompt_id, attempt * 5)
+            await asyncio.sleep(5)
+        return ComfyUIMessage(prompt_id=prompt_id, status="error", error="ComfyUI 任务执行超时")
+
+    async def _push_result(self, task_id: str, result: dict, max_retries: int = 3) -> bool:
+        payload = {
+            "task_id": task_id,
+            "instance_id": self._instance_id,
+            "status": result.get("status", "failed"),
+            "result_path": f"/results/{task_id}",
+            "error_message": result.get("error"),
+        }
+        for attempt in range(max_retries):
+            try:
+                async with httpx.AsyncClient(timeout=30.0) as c:
+                    resp = await c.post(f"{self._server}/instance/result", json=payload, headers=_make_auth_headers())
+                    if resp.status_code == 200:
+                        logger.info("任务 %s 结果已推送", task_id)
+                        return True
+                    logger.warning("推送失败 (%d/%d): %d", attempt + 1, max_retries, resp.status_code)
+            except Exception as exc:
+                logger.warning("推送异常 (%d/%d): %s", attempt + 1, max_retries, exc)
+            if attempt < max_retries - 1:
+                await asyncio.sleep(2 ** (attempt + 1))
+        return False
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         print(f"Usage: python3 {sys.argv[0]} <group_name>", file=sys.stderr)
         sys.exit(1)
-    asyncio.run(setup(sys.argv[1]))
+
+    group_name = sys.argv[1]
+
+    async def main() -> None:
+        await setup(group_name)
+        agent = InstanceAgent(
+            server_url=os.getenv("SERVER_URL", "http://localhost:8000"),
+            heartbeat_interval=int(os.getenv("HEARTBEAT_INTERVAL", "30")),
+            group=group_name,
+        )
+        await agent.start()
+
+    asyncio.run(main())
