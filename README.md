@@ -2,7 +2,7 @@
 
 ComfyUI instance provisioning config repository.
 
-Each GPU instance clones this repo on startup and runs `setup.py <group_name>`
+Each GPU instance clones this repo on startup and runs `setup.py <group_id>`
 to install custom nodes and download model files.
 
 ## Structure
@@ -16,7 +16,7 @@ groups/               # per-group provisioning config (nodes + models)
   video_face_swap_group.yaml
 workflows/            # ComfyUI workflow JSON templates
   w1a.json  ...
-setup.py              # entrypoint: python3 setup.py <group_name>
+setup.py              # entrypoint: python3 setup.py <group_id>
 ```
 
 ## Usage
@@ -28,7 +28,7 @@ python3 /opt/gpus/instance-config/setup.py face_detection_swap_shared
 
 ## Adding a new group
 
-1. Create `groups/<group_name>.yaml` with `nodes:` and `models:` lists.
+1. Create `groups/<group_id>.yaml` with `nodes:` and `models:` lists.
 2. Add the group to `src/config.yaml` in the scheduler.
 # instance-config
 # instance-config

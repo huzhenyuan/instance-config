@@ -2,7 +2,7 @@
 """Instance setup + agent runner.
 
 Usage:
-    python3 setup.py <group_id>
+    python3 setup.py <group_name>
 
 Phase 1 – Provision: installs custom ComfyUI nodes and downloads model files.
 Phase 2 – Agent loop: registers with the scheduler server, then heartbeats and
@@ -16,7 +16,7 @@ Environment variables:
     PUBLIC_IPADDR     — public IP reported during registration
     API_SECRET        — HMAC secret for request signing (optional)
     HEARTBEAT_INTERVAL — seconds between heartbeats (default: 30)
-    INSTANCE_GROUP_ID — group identifier passed at container launch
+    INSTANCE_GROUP_NAME — group name passed at container launch
 """
 
 from __future__ import annotations
@@ -222,10 +222,10 @@ class ComfyUIClient:
 class InstanceAgent:
     _AGENT_VERSION = "1.0.0"
 
-    def __init__(self, server_url: str, heartbeat_interval: int = 30, poll_interval: int = 5, group_id: str = ""):
+    def __init__(self, server_url: str, heartbeat_interval: int = 30, poll_interval: int = 5, group_name: str = ""):
         self._server = server_url.rstrip("/")
         self._instance_id = os.getenv("CONTAINER_ID", "")
-        self._group = group_id
+        self._group_name = group_name
         self._heartbeat_interval = heartbeat_interval
         self._poll_interval = poll_interval
         self._status = "idle"
@@ -255,7 +255,7 @@ class InstanceAgent:
             "instance_id": self._instance_id,
             "ip_address": os.getenv("PUBLIC_IPADDR", ""),
             "agent_version": self._AGENT_VERSION,
-            "group_id": self._group,
+            "group_name": self._group_name,
         }
         try:
             async with httpx.AsyncClient(base_url=self._server, timeout=httpx.Timeout(10.0, connect=5.0)) as c:
@@ -393,17 +393,17 @@ class InstanceAgent:
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print(f"Usage: python3 {sys.argv[0]} <group_id>", file=sys.stderr)
+        print(f"Usage: python3 {sys.argv[0]} <group_name>", file=sys.stderr)
         sys.exit(1)
 
-    group_id = sys.argv[1]
+    group_name = sys.argv[1]
 
     async def main() -> None:
-        await setup(group_id)
+        await setup(group_name)
         agent = InstanceAgent(
             server_url=os.getenv("SERVER_URL", "http://localhost:8000"),
             heartbeat_interval=int(os.getenv("HEARTBEAT_INTERVAL", "30")),
-            group_id=group_id,
+            group_name=group_name,
         )
         await agent.start()
 

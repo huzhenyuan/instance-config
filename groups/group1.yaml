@@ -2,10 +2,7 @@
 # workflows: face_detect, face_swap, multi_face_swap
 
 nodes:
-  - repo: "https://github.com/Fannovel16/ControlNet-pp.git"
-    pip: []
-  - repo: "https://github.com/AUTOMATIC1111/stable-diffusion-webui.git"
-    pip: ["insightface", "onnxruntime"]
+
 
 models:
   - url: "https://huggingface.co/lllyas1234/ponyF6RealisticV6/resolve/main/ponyF6RealisticV6PonyV6.safetensors"
