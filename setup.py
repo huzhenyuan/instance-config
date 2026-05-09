@@ -22,7 +22,6 @@ Environment variables:
 from __future__ import annotations
 
 import asyncio
-import copy
 import hashlib
 import json
 import logging
@@ -32,7 +31,7 @@ import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 # ---------------------------------------------------------------------------
 # Bootstrap dependencies if not present
@@ -175,27 +174,51 @@ async def download_models(models: list[dict], models_dir: Path) -> None:
             dest_file.unlink(missing_ok=True)
 
 
-async def setup(group_name: str) -> None:
+def _load_group_setup_config(group_name: str) -> tuple[list[dict], list[dict], Path, Path]:
     config_path = REPO_ROOT / "groups" / f"{group_name}.yaml"
     if not config_path.exists():
-        logger.error("Group config not found: %s", config_path)
-        sys.exit(1)
+        raise FileNotFoundError(f"Group config not found: {config_path}")
 
     with config_path.open() as f:
         cfg = yaml.safe_load(f) or {}
 
     nodes: list[dict] = cfg.get("nodes") or []
     models: list[dict] = cfg.get("models") or []
-
     custom_nodes_dir = Path(os.getenv("CUSTOM_NODES_DIR", DEFAULT_CUSTOM_NODES_DIR))
     models_dir = Path(os.getenv("MODELS_DIR", DEFAULT_MODELS_DIR))
+    return nodes, models, custom_nodes_dir, models_dir
 
-    logger.info("=== Setup: group=%s, nodes=%d, models=%d ===", group_name, len(nodes), len(models))
+
+async def _run_provision_jobs(nodes: list[dict], models: list[dict], custom_nodes_dir: Path, models_dir: Path) -> None:
+    jobs: list[asyncio.Task[None]] = []
     if nodes:
-        await install_nodes(nodes, custom_nodes_dir)
+        jobs.append(asyncio.create_task(install_nodes(nodes, custom_nodes_dir)))
     if models:
-        await download_models(models, models_dir)
-    logger.info("=== Setup complete: group=%s ===", group_name)
+        jobs.append(asyncio.create_task(download_models(models, models_dir)))
+
+    if jobs:
+        await asyncio.gather(*jobs)
+    else:
+        logger.info("[setup] no nodes/models to provision")
+
+
+async def provision_in_background(group_name: str, on_finished: Callable[[], None] | None = None) -> None:
+    try:
+        nodes, models, custom_nodes_dir, models_dir = _load_group_setup_config(group_name)
+        logger.info(
+            "=== Background setup: group=%s, nodes=%d, models=%d ===",
+            group_name,
+            len(nodes),
+            len(models),
+        )
+        await _run_provision_jobs(nodes, models, custom_nodes_dir, models_dir)
+
+        logger.info("=== Background setup complete: group=%s ===", group_name)
+    except Exception:
+        logger.exception("[setup] background provisioning failed")
+    finally:
+        if on_finished:
+            on_finished()
 
 
 # ---------------------------------------------------------------------------
@@ -264,11 +287,19 @@ class InstanceAgent:
         self._gpu_name = gpu_name or os.getenv("GPU_NAME", "")
         self._heartbeat_interval = heartbeat_interval
         self._poll_interval = poll_interval
-        self._status = "idle"
+        self._status = "provisioning"
         self._current_task_id: str | None = None
         self._current_task: dict | None = None
         self._stop = asyncio.Event()
         self._active_tasks: list[asyncio.Task] = []
+
+    def mark_provisioning_done(self) -> None:
+        if self._status == "provisioning":
+            self._status = "idle"
+            logger.info("[agent] provisioning done, switch status to idle")
+
+    def add_background_task(self, task: asyncio.Task) -> None:
+        self._active_tasks.append(task)
 
     async def start(self) -> None:
         logger.info(
@@ -287,6 +318,7 @@ class InstanceAgent:
             fetch_task_loop.cancel()
             for t in self._active_tasks:
                 t.cancel()
+            await asyncio.gather(*self._active_tasks, return_exceptions=True)
             logger.info("Agent 已停止")
 
     async def _heartbeat_loop(self) -> None:
@@ -341,7 +373,6 @@ class InstanceAgent:
         if not wf_path.exists():
             raise FileNotFoundError(f"Workflow file not found: {wf_path}")
         workflow_file_content = json.loads(wf_path.read_text())
-        workflow_file_content = copy.deepcopy(workflow_file_content)
         for key, value in params.items():
             for node in workflow_file_content.values():
                 if isinstance(node, dict) and key in node.get("inputs", {}):
@@ -428,13 +459,22 @@ if __name__ == "__main__":
     group_name = sys.argv[1]
 
     async def main() -> None:
-        await setup(group_name)
+        # Validate config early. Provisioning itself runs in background.
+        try:
+            _load_group_setup_config(group_name)
+        except FileNotFoundError as exc:
+            logger.error("%s", exc)
+            sys.exit(1)
         agent = InstanceAgent(
             server_url=os.getenv("SERVER_URL", "http://localhost:8000"),
             heartbeat_interval=int(os.getenv("HEARTBEAT_INTERVAL", "5")),
             group_name=group_name,
             gpu_name=os.getenv("GPU_NAME", ""),
         )
+        setup_task = asyncio.create_task(
+            provision_in_background(group_name, on_finished=agent.mark_provisioning_done)
+        )
+        agent.add_background_task(setup_task)
         await agent.start()
 
     asyncio.run(main())
