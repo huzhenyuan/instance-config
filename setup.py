@@ -5,7 +5,7 @@ Usage:
     python3 setup.py <group_name>
 
 Phase 1 – Provision: installs custom ComfyUI nodes and downloads model files.
-Phase 2 – Agent loop: registers with the scheduler server, then heartbeats and
+Phase 2 – Agent loop: starts heartbeat + polling loops immediately and
            executes ComfyUI tasks until the process is terminated.
 
 Environment variables:
@@ -13,10 +13,10 @@ Environment variables:
     MODELS_DIR        — default: /workspaces/ComfyUI/models
     SERVER_URL        — scheduler server base URL (default: http://localhost:8000)
     CONTAINER_ID      — instance identifier
-    PUBLIC_IPADDR     — public IP reported during registration
     API_SECRET        — HMAC secret for request signing (optional)
-    HEARTBEAT_INTERVAL — seconds between heartbeats (default: 30)
+    HEARTBEAT_INTERVAL — seconds between heartbeats (default: 5)
     INSTANCE_GROUP_NAME — group name passed at container launch
+    GPU_NAME          — GPU display name passed at container launch
 """
 
 from __future__ import annotations
@@ -222,10 +222,18 @@ class ComfyUIClient:
 class InstanceAgent:
     _AGENT_VERSION = "1.0.0"
 
-    def __init__(self, server_url: str, heartbeat_interval: int = 30, poll_interval: int = 5, group_name: str = ""):
+    def __init__(
+        self,
+        server_url: str,
+        heartbeat_interval: int = 5,
+        poll_interval: int = 5,
+        group_name: str = "",
+        gpu_name: str = "",
+    ):
         self._server = server_url.rstrip("/")
         self._instance_id = os.getenv("CONTAINER_ID", "")
         self._group_name = group_name
+        self._gpu_name = gpu_name or os.getenv("GPU_NAME", "")
         self._heartbeat_interval = heartbeat_interval
         self._poll_interval = poll_interval
         self._status = "idle"
@@ -235,10 +243,13 @@ class InstanceAgent:
         self._active_tasks: list[asyncio.Task] = []
 
     async def start(self) -> None:
-        if not await self._register():
-            logger.error("无法注册到服务端，agent 退出")
-            return
-        logger.info("Agent 已启动: instance_id=%s, server=%s", self._instance_id, self._server)
+        logger.info(
+            "Agent 已启动: instance_id=%s, server=%s, group=%s, gpu=%s",
+            self._instance_id,
+            self._server,
+            self._group_name,
+            self._gpu_name,
+        )
         hb = asyncio.create_task(self._heartbeat_loop())
         poll = asyncio.create_task(self._poll_loop())
         try:
@@ -250,40 +261,30 @@ class InstanceAgent:
                 t.cancel()
             logger.info("Agent 已停止")
 
-    async def _register(self) -> bool:
-        payload = {
-            "instance_id": self._instance_id,
-            "ip_address": os.getenv("PUBLIC_IPADDR", ""),
-            "agent_version": self._AGENT_VERSION,
-            "group_name": self._group_name,
-        }
-        try:
-            async with httpx.AsyncClient(base_url=self._server, timeout=httpx.Timeout(10.0, connect=5.0)) as c:
-                resp = await c.post("/instance/register", json=payload, headers=_make_auth_headers())
-                if resp.status_code == 200:
-                    return True
-                logger.error("注册失败: %d %s", resp.status_code, resp.text)
-        except Exception as exc:
-            logger.error("注册异常: %s", exc)
-        return False
-
     async def _heartbeat_loop(self) -> None:
         while not self._stop.is_set():
             try:
-                async with httpx.AsyncClient(base_url=self._server, timeout=httpx.Timeout(10.0)) as c:
-                    resp = await c.post("/instance/health", headers=_make_auth_headers(), json={
-                        "instance_id": self._instance_id,
-                        "status": self._status,
-                        "current_task_id": self._current_task_id,
-                    })
-                    if resp.status_code != 200:
-                        logger.warning("[心跳] 异常: %d", resp.status_code)
+                await self._send_heartbeat()
             except Exception as exc:
                 logger.warning("[心跳] 失败: %s", exc)
             try:
                 await asyncio.wait_for(self._stop.wait(), timeout=self._heartbeat_interval)
             except asyncio.TimeoutError:
                 pass
+
+    async def _send_heartbeat(self) -> None:
+        payload = {
+            "instance_id": self._instance_id,
+            "status": self._status,
+            "current_task_id": self._current_task_id,
+            "group_name": self._group_name,
+            "gpu_name": self._gpu_name,
+            "agent_version": self._AGENT_VERSION,
+        }
+        async with httpx.AsyncClient(base_url=self._server, timeout=httpx.Timeout(10.0, connect=5.0)) as c:
+            resp = await c.post("/instance/health", json=payload, headers=_make_auth_headers())
+            if resp.status_code != 200:
+                logger.warning("[心跳] 异常: %d %s", resp.status_code, resp.text)
 
     async def _poll_loop(self) -> None:
         while not self._stop.is_set():
@@ -402,8 +403,9 @@ if __name__ == "__main__":
         await setup(group_name)
         agent = InstanceAgent(
             server_url=os.getenv("SERVER_URL", "http://localhost:8000"),
-            heartbeat_interval=int(os.getenv("HEARTBEAT_INTERVAL", "30")),
+            heartbeat_interval=int(os.getenv("HEARTBEAT_INTERVAL", "5")),
             group_name=group_name,
+            gpu_name=os.getenv("GPU_NAME", ""),
         )
         await agent.start()
 
