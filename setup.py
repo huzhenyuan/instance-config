@@ -53,6 +53,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 REPO_ROOT = Path(__file__).resolve().parent
+COMFYUI_ROOT = Path("/workspace/ComfyUI")
 DEFAULT_CUSTOM_NODES_DIR = "/workspace/ComfyUI/custom_nodes"
 DEFAULT_MODELS_DIR = "/workspace/ComfyUI/models"
 
@@ -202,8 +203,32 @@ async def _run_provision_jobs(nodes: list[dict], models: list[dict], custom_node
         logger.info("[setup] no nodes/models to provision")
 
 
+def _comfyui_is_ready() -> bool:
+    """Return True once ComfyUI source tree has been initialized."""
+    required_markers = ("main.py", "server.py", "README.md")
+    return COMFYUI_ROOT.is_dir() and any((COMFYUI_ROOT / marker).exists() for marker in required_markers)
+
+
+async def _wait_for_comfyui_ready(timeout_sec: int = 300, interval_sec: int = 2) -> bool:
+    """Avoid creating /workspace/ComfyUI subdirs before image bootstrap finishes."""
+    elapsed = 0
+    while elapsed <= timeout_sec:
+        if _comfyui_is_ready():
+            return True
+        await asyncio.sleep(interval_sec)
+        elapsed += interval_sec
+    return False
+
+
 async def provision_in_background(group_name: str, on_finished: Callable[[], None] | None = None) -> None:
     try:
+        if not await _wait_for_comfyui_ready():
+            logger.error(
+                "[setup] ComfyUI not initialized under %s after timeout; skip provisioning to avoid clobbering bootstrap",
+                COMFYUI_ROOT,
+            )
+            return
+
         nodes, models, custom_nodes_dir, models_dir = _load_group_setup_config(group_name)
         logger.info(
             "=== Background setup: group=%s, nodes=%d, models=%d ===",
@@ -471,10 +496,10 @@ if __name__ == "__main__":
             group_name=group_name,
             gpu_name=os.getenv("GPU_NAME", ""),
         )
-        # setup_task = asyncio.create_task(
-        #     provision_in_background(group_name, on_finished=agent.mark_provisioning_done)
-        # )
-        # agent.add_background_task(setup_task)
+        setup_task = asyncio.create_task(
+            provision_in_background(group_name, on_finished=agent.mark_provisioning_done)
+        )
+        agent.add_background_task(setup_task)
         await agent.start()
 
     asyncio.run(main())
