@@ -471,10 +471,10 @@ if __name__ == "__main__":
             group_name=group_name,
             gpu_name=os.getenv("GPU_NAME", ""),
         )
-        setup_task = asyncio.create_task(
-            provision_in_background(group_name, on_finished=agent.mark_provisioning_done)
-        )
-        agent.add_background_task(setup_task)
+        # setup_task = asyncio.create_task(
+        #     provision_in_background(group_name, on_finished=agent.mark_provisioning_done)
+        # )
+        # agent.add_background_task(setup_task)
         await agent.start()
 
     asyncio.run(main())
