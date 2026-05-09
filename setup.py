@@ -9,8 +9,8 @@ Phase 2 – Agent loop: starts heartbeat + polling loops immediately and
            executes ComfyUI tasks until the process is terminated.
 
 Environment variables:
-    CUSTOM_NODES_DIR  — default: /workspaces/ComfyUI/custom_nodes
-    MODELS_DIR        — default: /workspaces/ComfyUI/models
+    CUSTOM_NODES_DIR  — default: /workspace/ComfyUI/custom_nodes
+    MODELS_DIR        — default: /workspace/ComfyUI/models
     SERVER_URL        — scheduler server base URL (default: http://localhost:8000)
     CONTAINER_ID      — instance identifier
     API_SECRET        — HMAC secret for request signing (optional)
@@ -54,8 +54,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 REPO_ROOT = Path(__file__).resolve().parent
-DEFAULT_CUSTOM_NODES_DIR = "/workspaces/ComfyUI/custom_nodes"
-DEFAULT_MODELS_DIR = "/workspaces/ComfyUI/models"
+DEFAULT_CUSTOM_NODES_DIR = "/workspace/ComfyUI/custom_nodes"
+DEFAULT_MODELS_DIR = "/workspace/ComfyUI/models"
 
 
 # ---------------------------------------------------------------------------
