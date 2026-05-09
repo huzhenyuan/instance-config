@@ -2,17 +2,14 @@
 # workflows: face_detect, face_swap, multi_face_swap
 
 nodes:
-
+  - repo: "https://github.com/Gourieff/ComfyUI-ReActor.git"
+    pip: []
 
 models:
-  - url: "https://huggingface.co/lllyas1234/ponyF6RealisticV6/resolve/main/ponyF6RealisticV6PonyV6.safetensors"
+  - url: "https://huggingface.co/cyberdelia/CyberRealisticPony/resolve/main/CyberRealisticPony_V17.0_FP16.safetensors"
     filename: "cyberrealistic-pony-v17.safetensors"
     subfolder: "checkpoints"
 
-  - url: "https://huggingface.co/Sauravkv/FaceSwap/resolve/main/insightface_037.onnx"
+  - url: "https://huggingface.co/Devia/G/resolve/main/inswapper_128.onnx"
     filename: "inswapper_128.onnx"
-    subfolder: "checkpoints"
-
-  - url: "https://huggingface.co/Mikubill/cfd-models/resolve/main/codeformer.pth"
-    filename: "codeformer.pth"
-    subfolder: "checkpoints"
+    subfolder: "insightface"
