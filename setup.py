@@ -2,7 +2,7 @@
 """Instance setup + agent runner.
 
 Usage:
-    python3 setup.py <group_name>
+    python3 setup.py <group_id>
 
 Phase 1 – Provision: installs custom ComfyUI nodes and downloads model files.
 Phase 2 – Agent loop: registers with the scheduler server, then heartbeats and
@@ -16,12 +16,15 @@ Environment variables:
     PUBLIC_IPADDR     — public IP reported during registration
     API_SECRET        — HMAC secret for request signing (optional)
     HEARTBEAT_INTERVAL — seconds between heartbeats (default: 30)
+    INSTANCE_GROUP_ID — group identifier passed at container launch
 """
 
 from __future__ import annotations
 
 import asyncio
+import copy
 import hashlib
+import json
 import logging
 import os
 import subprocess
@@ -219,10 +222,10 @@ class ComfyUIClient:
 class InstanceAgent:
     _AGENT_VERSION = "1.0.0"
 
-    def __init__(self, server_url: str, heartbeat_interval: int = 30, poll_interval: int = 5, group: str = ""):
+    def __init__(self, server_url: str, heartbeat_interval: int = 30, poll_interval: int = 5, group_id: str = ""):
         self._server = server_url.rstrip("/")
         self._instance_id = os.getenv("CONTAINER_ID", "")
-        self._group = group
+        self._group = group_id
         self._heartbeat_interval = heartbeat_interval
         self._poll_interval = poll_interval
         self._status = "idle"
@@ -252,7 +255,7 @@ class InstanceAgent:
             "instance_id": self._instance_id,
             "ip_address": os.getenv("PUBLIC_IPADDR", ""),
             "agent_version": self._AGENT_VERSION,
-            "group": self._group,
+            "group_id": self._group,
         }
         try:
             async with httpx.AsyncClient(base_url=self._server, timeout=httpx.Timeout(10.0, connect=5.0)) as c:
@@ -302,6 +305,20 @@ class InstanceAgent:
             except asyncio.TimeoutError:
                 pass
 
+    @staticmethod
+    def _load_graph(workflow_file: str, params: dict) -> dict:
+        """从本地 workflows/ 目录加载 JSON，并将 params 覆盖到匹配的节点 inputs。"""
+        wf_path = REPO_ROOT / "workflows" / workflow_file
+        if not wf_path.exists():
+            raise FileNotFoundError(f"Workflow file not found: {wf_path}")
+        graph = json.loads(wf_path.read_text())
+        graph = copy.deepcopy(graph)
+        for key, value in params.items():
+            for node in graph.values():
+                if isinstance(node, dict) and key in node.get("inputs", {}):
+                    node["inputs"][key] = value
+        return graph
+
     async def _execute_task(self) -> None:
         task = self._current_task
         if not task:
@@ -311,8 +328,11 @@ class InstanceAgent:
         comfyui = ComfyUIClient(ip="localhost", port=18188)
         try:
             logger.info("执行任务: %s", task_id)
-            payload = task.get("payload", {})
-            graph = payload.get("graph") or payload.get("prompt") or payload
+            workflow_file: str = task.get("workflow_file", "")
+            params: dict = task.get("payload", {})
+            if not workflow_file:
+                raise ValueError("任务缺少 workflow_file 字段")
+            graph = self._load_graph(workflow_file, params)
             prompt_id = await comfyui.submit_prompt(graph, client_id=f"container-{self._instance_id}")
             if not prompt_id:
                 raise ValueError("ComfyUI 未返回 prompt_id")
@@ -373,17 +393,17 @@ class InstanceAgent:
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print(f"Usage: python3 {sys.argv[0]} <group_name>", file=sys.stderr)
+        print(f"Usage: python3 {sys.argv[0]} <group_id>", file=sys.stderr)
         sys.exit(1)
 
-    group_name = sys.argv[1]
+    group_id = sys.argv[1]
 
     async def main() -> None:
-        await setup(group_name)
+        await setup(group_id)
         agent = InstanceAgent(
             server_url=os.getenv("SERVER_URL", "http://localhost:8000"),
             heartbeat_interval=int(os.getenv("HEARTBEAT_INTERVAL", "30")),
-            group=group_name,
+            group_id=group_id,
         )
         await agent.start()
 
