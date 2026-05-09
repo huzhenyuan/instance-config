@@ -70,13 +70,40 @@ async def _run(cmd: str, timeout: int = 600) -> bool:
         stderr=asyncio.subprocess.STDOUT,
     )
     assert proc.stdout
-    while True:
-        line = await proc.stdout.readline()
-        if not line:
-            break
-        logger.info("[CMD] %s", line.decode(errors="replace").rstrip())
-    await asyncio.wait_for(proc.wait(), timeout=timeout)
-    return proc.returncode == 0
+    pending = ""
+    try:
+        while True:
+            # Read fixed-size chunks so commands that print long progress lines
+            # (without newlines) do not trigger StreamReader line-length errors.
+            chunk = await proc.stdout.read(4096)
+            if not chunk:
+                break
+
+            pending += chunk.decode(errors="replace").replace("\r", "\n")
+
+            while "\n" in pending:
+                line, pending = pending.split("\n", 1)
+                line = line.rstrip()
+                if line:
+                    logger.info("[CMD] %s", line)
+
+            # Flush oversized partial content to avoid unbounded buffer growth.
+            if len(pending) > 8192:
+                line = pending.rstrip()
+                if line:
+                    logger.info("[CMD] %s", line)
+                pending = ""
+
+        if pending.strip():
+            logger.info("[CMD] %s", pending.rstrip())
+
+        await asyncio.wait_for(proc.wait(), timeout=timeout)
+        return proc.returncode == 0
+    except asyncio.TimeoutError:
+        logger.error("[CMD] Timeout after %ss: %s", timeout, cmd)
+        proc.kill()
+        await proc.wait()
+        return False
 
 
 def _make_auth_headers() -> dict[str, str]:
