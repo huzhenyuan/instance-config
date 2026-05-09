@@ -1,0 +1,51 @@
+# w2 Single-person face swap (body preserved; face region replaced).
+
+workflow_id: w2
+description: "Single-person face swap"
+
+comfy_workflow_path: config/workflows/json/w2.json
+
+# Output dimensions are informational — the underlying swap preserves the
+# target image's native resolution. Downstream resize enforces the tier.
+return_quality_sizes:
+  "1":
+    width:  480
+    height: 854
+  "2":
+    width:  720
+    height: 1280
+
+comfy_input_root: /data/comfyui/input
+gateway_input_subdir: gateway
+
+# NB: node-index mapping is the *opposite* of PRD field numbering.
+#   PRD  input_img_1 = target body  → bound at node 2
+#   PRD  input_img_2 = ref face     → bound at node 1
+bindings:
+  - node: "1"
+    input: image
+    source: runtime.face_relpath
+  - node: "2"
+    input: image
+    source: runtime.target_relpath
+  - node: "4"
+    input: filename_prefix
+    source: runtime.save_prefix
+
+compliance:
+  minor_detector:
+    enabled: true
+    action: reject
+  face_count:
+    enabled: true
+    min: 1
+    max: 3
+    action_on_violation: reject
+  occlusion:
+    enabled: false
+  motion:
+    enabled: false
+
+preprocess:
+  enhance_input_mode: none
+postprocess: {}

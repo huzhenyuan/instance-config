@@ -1,0 +1,183 @@
+{
+  "10": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "gateway/placeholder_w5a_input.png"
+    }
+  },
+  "20": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "wan2.2_i2v_A14b_high_noise_scaled_fp8_e4m3_lightx2v_4step_comfyui_1030.safetensors",
+      "weight_dtype": "default"
+    }
+  },
+  "23": {
+    "class_type": "LoraLoaderModelOnly",
+    "inputs": {
+      "model": ["20", 0],
+      "lora_name": "NSFW-22-H-e8.safetensors",
+      "strength_model": 0.9
+    }
+  },
+  "24": {
+    "class_type": "LoraLoaderModelOnly",
+    "inputs": {
+      "model": ["23", 0],
+      "lora_name": "POVkissing_WAN22_I2V_high_noise.safetensors",
+      "strength_model": 0.0
+    }
+  },
+  "22": {
+    "class_type": "ModelSamplingSD3",
+    "inputs": {
+      "model": ["24", 0],
+      "shift": 5.0
+    }
+  },
+  "30": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "wan2.2_i2v_A14b_low_noise_scaled_fp8_e4m3_lightx2v_4step_comfyui.safetensors",
+      "weight_dtype": "default"
+    }
+  },
+  "33": {
+    "class_type": "LoraLoaderModelOnly",
+    "inputs": {
+      "model": ["30", 0],
+      "lora_name": "NSFW-22-L-e8.safetensors",
+      "strength_model": 0.9
+    }
+  },
+  "34": {
+    "class_type": "LoraLoaderModelOnly",
+    "inputs": {
+      "model": ["33", 0],
+      "lora_name": "POVkissing_WAN22_I2V_low_noise.safetensors",
+      "strength_model": 0.0
+    }
+  },
+  "32": {
+    "class_type": "ModelSamplingSD3",
+    "inputs": {
+      "model": ["34", 0],
+      "shift": 5.0
+    }
+  },
+  "40": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+      "type": "wan"
+    }
+  },
+  "41": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "placeholder positive prompt",
+      "clip": ["40", 0]
+    }
+  },
+  "42": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走",
+      "clip": ["40", 0]
+    }
+  },
+  "50": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "wan_2.1_vae.safetensors"
+    }
+  },
+  "51": {
+    "class_type": "CLIPVisionLoader",
+    "inputs": {
+      "clip_name": "clip_vision_h.safetensors"
+    }
+  },
+  "52": {
+    "class_type": "CLIPVisionEncode",
+    "inputs": {
+      "clip_vision": ["51", 0],
+      "image": ["10", 0],
+      "crop": "center"
+    }
+  },
+  "60": {
+    "class_type": "WanImageToVideo",
+    "inputs": {
+      "positive": ["41", 0],
+      "negative": ["42", 0],
+      "vae": ["50", 0],
+      "width": 528,
+      "height": 720,
+      "length": 81,
+      "batch_size": 1,
+      "clip_vision_output": ["52", 0],
+      "start_image": ["10", 0]
+    }
+  },
+  "70": {
+    "class_type": "KSamplerAdvanced",
+    "inputs": {
+      "model": ["22", 0],
+      "positive": ["60", 0],
+      "negative": ["60", 1],
+      "latent_image": ["60", 2],
+      "add_noise": "enable",
+      "noise_seed": 77,
+      "control_after_generate": "fixed",
+      "steps": 4,
+      "cfg": 1.0,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "start_at_step": 0,
+      "end_at_step": 2,
+      "return_with_leftover_noise": "enable"
+    }
+  },
+  "71": {
+    "class_type": "KSamplerAdvanced",
+    "inputs": {
+      "model": ["32", 0],
+      "positive": ["60", 0],
+      "negative": ["60", 1],
+      "latent_image": ["70", 0],
+      "add_noise": "disable",
+      "noise_seed": 77,
+      "control_after_generate": "fixed",
+      "steps": 4,
+      "cfg": 1.0,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "start_at_step": 2,
+      "end_at_step": 4,
+      "return_with_leftover_noise": "disable"
+    }
+  },
+  "80": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": ["71", 0],
+      "vae": ["50", 0]
+    }
+  },
+  "99": {
+    "class_type": "VHS_VideoCombine",
+    "inputs": {
+      "images": ["80", 0],
+      "filename_prefix": "gateway/placeholder/w5a",
+      "frame_rate": 16,
+      "loop_count": 0,
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": false,
+      "pingpong": false,
+      "save_output": true
+    }
+  }
+}

@@ -1,0 +1,25 @@
+# Default policy for workflows that are still stubbed (w1..w5, w7).
+# The dispatcher uses this as a fall-through when a specific w<N>.yaml is
+# missing. Once a workflow gets a real ComfyUI wiring, create its own file.
+
+workflow_id: default
+description: "Stub default — used by all workflows without a dedicated YAML"
+comfy_workflow_path: null
+
+compliance:
+  minor_detector:
+    enabled: true
+    action: reject
+  face_count:
+    enabled: true
+    min: 1
+    max: 6
+    action_on_violation: reject
+  occlusion:
+    enabled: false
+  motion:
+    enabled: false
+
+preprocess:
+  enhance_input_mode: none
+postprocess: {}

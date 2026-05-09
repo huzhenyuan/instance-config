@@ -1,0 +1,75 @@
+# w3 Multi-person face swap (2 people; per-person reference face).
+
+workflow_id: w3
+description: "Multi-person face swap"
+
+comfy_workflow_path: config/workflows/json/w3.json
+
+# Output size = source input size; tier is informational.
+return_quality_sizes:
+  "1":
+    width:  480
+    height: 854
+  "2":
+    width:  720
+    height: 1280
+
+comfy_input_root: /data/comfyui/input
+gateway_input_subdir: gateway
+
+# Matching strategy is chosen in routing.build_w3_runtime based on per-face
+# gender detection:
+#   mixed_gender  — strict gender-gate per reference
+#   same_gender   — size-indexed (h1 → largest face, h2 → second)
+#   fallback_size — same as same_gender when detection fails
+bindings:
+  - node: "1"
+    input: image
+    source: runtime.source_relpath
+  - node: "2"
+    input: image
+    source: runtime.face_h1_relpath
+  - node: "3"
+    input: image
+    source: runtime.face_h2_relpath
+  - node: "4"
+    input: input_faces_index
+    source: runtime.swap1_input_faces_index
+  - node: "4"
+    input: detect_gender_input
+    source: runtime.swap1_detect_gender_input
+  - node: "4"
+    input: detect_gender_source
+    source: runtime.swap1_detect_gender_source
+  - node: "5"
+    input: input_faces_index
+    source: runtime.swap2_input_faces_index
+  - node: "5"
+    input: detect_gender_input
+    source: runtime.swap2_detect_gender_input
+  - node: "5"
+    input: detect_gender_source
+    source: runtime.swap2_detect_gender_source
+  - node: "6"
+    input: filename_prefix
+    source: runtime.save_prefix
+
+compliance:
+  minor_detector:
+    enabled: true
+    action: reject
+  face_count:
+    # Dispatcher enforces the per-input tighter rule (source>=2, refs==1);
+    # this block stays descriptive for the policy dump.
+    enabled: true
+    min: 2
+    max: 6
+    action_on_violation: reject
+  occlusion:
+    enabled: false
+  motion:
+    enabled: false
+
+preprocess:
+  enhance_input_mode: none
+postprocess: {}

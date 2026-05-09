@@ -296,7 +296,7 @@ class InstanceAgent:
                             if tasks:
                                 self._current_task = tasks[0]
                                 self._status = "computing"
-                                t = asyncio.create_task(self._execute_task())
+                                t = asyncio.create_task(self._execute_comfyui_task())
                                 self._active_tasks.append(t)
                 except Exception as exc:
                     logger.warning("[轮询] 失败: %s", exc)
@@ -306,20 +306,20 @@ class InstanceAgent:
                 pass
 
     @staticmethod
-    def _load_graph(workflow_file: str, params: dict) -> dict:
+    def _load_workflow_file(workflow_file: str, params: dict) -> dict:
         """从本地 workflows/ 目录加载 JSON，并将 params 覆盖到匹配的节点 inputs。"""
-        wf_path = REPO_ROOT / "workflows" / workflow_file
+        wf_path = REPO_ROOT / "workflows" / "json" / workflow_file
         if not wf_path.exists():
             raise FileNotFoundError(f"Workflow file not found: {wf_path}")
-        graph = json.loads(wf_path.read_text())
-        graph = copy.deepcopy(graph)
+        workflow_file_content = json.loads(wf_path.read_text())
+        workflow_file_content = copy.deepcopy(workflow_file_content)
         for key, value in params.items():
-            for node in graph.values():
+            for node in workflow_file_content.values():
                 if isinstance(node, dict) and key in node.get("inputs", {}):
                     node["inputs"][key] = value
-        return graph
+        return workflow_file_content
 
-    async def _execute_task(self) -> None:
+    async def _execute_comfyui_task(self) -> None:
         task = self._current_task
         if not task:
             return
@@ -332,8 +332,8 @@ class InstanceAgent:
             params: dict = task.get("payload", {})
             if not workflow_file:
                 raise ValueError("任务缺少 workflow_file 字段")
-            graph = self._load_graph(workflow_file, params)
-            prompt_id = await comfyui.submit_prompt(graph, client_id=f"container-{self._instance_id}")
+            workflow_file_content = self._load_workflow_file(workflow_file, params)
+            prompt_id = await comfyui.submit_prompt(workflow_file_content, client_id=f"container-{self._instance_id}")
             if not prompt_id:
                 raise ValueError("ComfyUI 未返回 prompt_id")
             msg = await self._poll_history(comfyui, prompt_id)
