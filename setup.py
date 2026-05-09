@@ -250,13 +250,13 @@ class InstanceAgent:
             self._group_name,
             self._gpu_name,
         )
-        hb = asyncio.create_task(self._heartbeat_loop())
-        poll = asyncio.create_task(self._poll_loop())
+        heartbeat_loop = asyncio.create_task(self._heartbeat_loop())
+        fetch_task_loop = asyncio.create_task(self._fetch_task_loop())
         try:
             await self._stop.wait()
         finally:
-            hb.cancel()
-            poll.cancel()
+            heartbeat_loop.cancel()
+            fetch_task_loop.cancel()
             for t in self._active_tasks:
                 t.cancel()
             logger.info("Agent 已停止")
@@ -282,13 +282,13 @@ class InstanceAgent:
             "agent_version": self._AGENT_VERSION,
         }
         async with httpx.AsyncClient(base_url=self._server, timeout=httpx.Timeout(10.0, connect=5.0)) as c:
-            resp = await c.post("/instance/health", json=payload, headers=_make_auth_headers())
+            resp = await c.post("/instance/heartbeat", json=payload, headers=_make_auth_headers())
             if resp.status_code != 200:
                 logger.warning("[心跳] 异常: %d %s", resp.status_code, resp.text)
 
-    async def _poll_loop(self) -> None:
+    async def _fetch_task_loop(self) -> None:
         while not self._stop.is_set():
-            if self._status == "idle" and not self._current_task:
+            if self._status == "idle":
                 try:
                     async with httpx.AsyncClient(base_url=self._server, timeout=httpx.Timeout(10.0)) as c:
                         resp = await c.post("/instance/fetch_task", json={"instance_id": self._instance_id}, headers=_make_auth_headers())
