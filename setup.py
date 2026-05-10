@@ -13,7 +13,7 @@ Environment variables:
     MODELS_DIR        — default: /workspace/ComfyUI/models
     SERVER_URL        — scheduler server base URL (default: http://localhost:8000)
     CONTAINER_ID      — instance identifier
-    API_SECRET        — HMAC secret for request signing (optional)
+    INSTANCE_API_SECRET — Bearer token for /instance/* API authentication (preferred)
     HEARTBEAT_INTERVAL — seconds between heartbeats (default: 5)
     INSTANCE_GROUP_NAME — group name passed at container launch
     GPU_NAME          — GPU display name passed at container launch
@@ -22,13 +22,11 @@ Environment variables:
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import json
 import logging
 import os
 import subprocess
 import sys
-import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
@@ -107,13 +105,11 @@ async def _run(cmd: str, timeout: int = 600) -> bool:
 
 
 def _make_auth_headers() -> dict[str, str]:
-    """生成 X-Timestamp + X-Signature 认证头（API_SECRET 为空时跳过认证）。"""
-    secret = os.getenv("API_SECRET", "")
+    """生成 Authorization: Bearer 认证头（未配置时跳过认证）。"""
+    secret = os.getenv("INSTANCE_API_SECRET", "")
     if not secret:
         return {}
-    ts = str(int(time.time()))
-    sig = hashlib.md5(f"{ts}{secret}".encode()).hexdigest()
-    return {"X-Timestamp": ts, "X-Signature": sig}
+    return {"Authorization": f"Bearer {secret}"}
 
 
 # ---------------------------------------------------------------------------
