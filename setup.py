@@ -388,17 +388,112 @@ class InstanceAgent:
                 pass
 
     @staticmethod
-    def _load_workflow_file(workflow_file: str, params: dict) -> dict:
-        """从本地 workflows/ 目录加载 JSON，并将 params 覆盖到匹配的节点 inputs。"""
+    async def _prepare_workflow(workflow_file: str, params: dict, task_id: str) -> dict:
+        """Load workflow JSON and apply bindings from the companion YAML.
+
+        Resolution order for a binding source:
+          request.<key>  → direct value from params dict (with optional default)
+          runtime.<var>  → resolved via param_inputs mapping or auto-generated
+
+        For param_inputs entries:
+          type: url_image / url_video → download the URL, save to ComfyUI input
+                                        dir, runtime var = relative path
+          (other types are ignored – vars remain unresolved)
+
+        Auto-generated runtime vars (when not supplied via param_inputs):
+          save_prefix → "{workflow_id}/{task_id}"
+          seed        → random 64-bit integer
+        """
         wf_path = REPO_ROOT / "workflows" / "json" / workflow_file
         if not wf_path.exists():
             raise FileNotFoundError(f"Workflow file not found: {wf_path}")
-        workflow_file_content = json.loads(wf_path.read_text())
-        for key, value in params.items():
-            for node in workflow_file_content.values():
-                if isinstance(node, dict) and key in node.get("inputs", {}):
-                    node["inputs"][key] = value
-        return workflow_file_content
+        graph = json.loads(wf_path.read_text())
+
+        # --- Load companion YAML policy (optional) --------------------------
+        workflow_id = workflow_file.removesuffix(".json")
+        yaml_path = REPO_ROOT / "workflows" / f"{workflow_id}.yaml"
+        bindings: list[dict] = []
+        param_inputs: dict[str, dict] = {}
+        comfy_input_root = Path("/data/comfyui/input")
+        gateway_subdir = "gateway"
+        yaml_workflow_id = workflow_id
+
+        if yaml_path.exists():
+            with yaml_path.open() as f:
+                wf_cfg = yaml.safe_load(f) or {}
+            bindings = wf_cfg.get("bindings") or []
+            param_inputs = wf_cfg.get("param_inputs") or {}
+            comfy_input_root = Path(wf_cfg.get("comfy_input_root", str(comfy_input_root)))
+            gateway_subdir = wf_cfg.get("gateway_input_subdir", gateway_subdir)
+            yaml_workflow_id = wf_cfg.get("workflow_id", workflow_id)
+
+        # --- Build runtime vars from param_inputs ----------------------------
+        runtime: dict[str, Any] = {}
+        input_dir = comfy_input_root / gateway_subdir
+        input_dir.mkdir(parents=True, exist_ok=True)
+
+        for param_key, spec in param_inputs.items():
+            url: Any = params.get(param_key)
+            if not url:
+                continue
+            rt_var: str = spec.get("runtime_var", "")
+            input_type: str = spec.get("type", "")
+            if not rt_var:
+                continue
+            if input_type in ("url_image", "url_video"):
+                # Derive file extension from URL or type.
+                ext = Path(str(url).split("?")[0]).suffix or (".mp4" if input_type == "url_video" else ".jpg")
+                local_name = f"{task_id}_{param_key}{ext}"
+                local_path = input_dir / local_name
+                if not local_path.exists():
+                    logger.info("[binding] Downloading %s → %s", url, local_path)
+                    async with httpx.AsyncClient(timeout=120.0, follow_redirects=True) as client:
+                        resp = await client.get(str(url))
+                        resp.raise_for_status()
+                        local_path.write_bytes(resp.content)
+                relpath = str((input_dir / local_name).relative_to(comfy_input_root))
+                runtime[rt_var] = relpath
+                logger.info("[binding] %s → runtime.%s = %s", param_key, rt_var, relpath)
+
+        # Auto-generated runtime vars (provide defaults if not already set).
+        runtime.setdefault("save_prefix", f"{yaml_workflow_id}/{task_id}")
+        runtime.setdefault("seed", int.from_bytes(__import__("os").urandom(8), "big") & 0x7FFF_FFFF_FFFF_FFFF)
+
+        # --- Apply bindings to graph ----------------------------------------
+        for binding in bindings:
+            node_id: str = str(binding.get("node", ""))
+            input_key: str = str(binding.get("input", ""))
+            source: str = str(binding.get("source", ""))
+            default = binding.get("default")
+
+            if not node_id or not input_key or not source:
+                continue
+
+            node = graph.get(node_id)
+            if not isinstance(node, dict):
+                continue
+
+            # Resolve value.
+            value: Any = None
+            if source.startswith("request."):
+                req_key = source[len("request."):]
+                value = params.get(req_key, default)
+            elif source.startswith("runtime."):
+                rt_key = source[len("runtime."):]
+                value = runtime.get(rt_key, default)
+            else:
+                value = default
+
+            if value is None:
+                # Skip bindings whose source is unavailable (e.g. optional inputs).
+                continue
+
+            inputs_dict = node.get("inputs")
+            if isinstance(inputs_dict, dict):
+                inputs_dict[input_key] = value
+                logger.debug("[binding] node %s .inputs.%s = %r", node_id, input_key, value)
+
+        return graph
 
     async def _execute_comfyui_task(self) -> None:
         task = self._current_task
@@ -413,7 +508,7 @@ class InstanceAgent:
             params: dict = task.get("payload", {})
             if not workflow_file:
                 raise ValueError("任务缺少 workflow_file 字段")
-            workflow_file_content = self._load_workflow_file(workflow_file, params)
+            workflow_file_content = await self._prepare_workflow(workflow_file, params, task_id)
             prompt_id = await comfyui.submit_prompt(workflow_file_content, client_id=f"container-{self._instance_id}")
             if not prompt_id:
                 raise ValueError("ComfyUI 未返回 prompt_id")

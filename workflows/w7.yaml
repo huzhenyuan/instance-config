@@ -23,6 +23,10 @@ return_quality_sizes:
 comfy_input_root: /data/comfyui/input
 gateway_input_subdir: gateway
 
+param_inputs:
+  input_video_1: {runtime_var: video_relpath, type: url_video}
+  input_img_1:   {runtime_var: face_relpath,  type: url_image}
+
 bindings:
   - node: "1"
     input: video

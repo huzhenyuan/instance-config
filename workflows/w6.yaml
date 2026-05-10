@@ -67,6 +67,9 @@ return_quality_sizes:
 comfy_input_root: /data/comfyui/input
 gateway_input_subdir: gateway
 
+param_inputs:
+  input_video_1: {runtime_var: video_relpath,      type: url_video}
+
 # Preprocess values consumed by the runtime builder before stage 1 submits.
 preprocess:
   target_fps: 16

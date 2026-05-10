@@ -19,6 +19,10 @@ return_quality_sizes:
 comfy_input_root: /data/comfyui/input
 gateway_input_subdir: gateway
 
+param_inputs:
+  input_img_1: {runtime_var: face_h1_relpath, type: url_image}
+  input_img_2: {runtime_var: face_h2_relpath, type: url_image}
+
 bindings:
   - node: "4"
     input: image

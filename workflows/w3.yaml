@@ -22,6 +22,12 @@ gateway_input_subdir: gateway
 #   mixed_gender  — strict gender-gate per reference
 #   same_gender   — size-indexed (h1 → largest face, h2 → second)
 #   fallback_size — same as same_gender when detection fails
+
+param_inputs:
+  input_img_1: {runtime_var: source_relpath,   type: url_image}
+  input_img_2: {runtime_var: face_h1_relpath,  type: url_image}
+  input_img_3: {runtime_var: face_h2_relpath,  type: url_image}
+
 bindings:
   - node: "1"
     input: image

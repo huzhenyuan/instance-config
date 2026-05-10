@@ -21,6 +21,12 @@ pose_library_subdir:   w1_xjoy/poses
 #   request.<field>  — value from client request body
 #   runtime.<field>  — value computed by the runtime builder
 #   default          — fallback when the resolved value is None
+
+# Maps payload param names → runtime variable names consumed by bindings.
+param_inputs:
+  input_img_1: {runtime_var: face_relpath, type: url_image}
+  input_img_2: {runtime_var: pose_relpath, type: url_image}
+
 bindings:
   - node: "1"
     input: unet_name
