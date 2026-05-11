@@ -6,7 +6,7 @@ LOG_FILE="/var/log/gpus-agent.log"
 PYTHON="/venv/main/bin/python"
 
 # Determine group name: prefer running process arg, fallback to env var
-GROUP=$(pgrep -a -f "setup.py" 2>/dev/null | grep -v grep | awk '{print $NF}' | head -1)
+GROUP=$(pgrep -a -f "setup.py" 2>/dev/null | grep -v grep | awk '{print $NF}' | tr -d '"' | head -1)
 if [ -z "$GROUP" ]; then
     GROUP="${INSTANCE_GROUP_NAME:-}"
 fi
