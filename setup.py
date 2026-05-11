@@ -450,7 +450,6 @@ class InstanceAgent:
         yaml_path = REPO_ROOT / "workflows" / f"{workflow_id}.yaml"
         bindings: list[dict] = []
         comfy_input_root = Path("/workspace/ComfyUI/input")
-        gateway_subdir = "gateway"
         yaml_workflow_id = workflow_id
 
         if yaml_path.exists():
@@ -458,10 +457,9 @@ class InstanceAgent:
                 wf_cfg = yaml.safe_load(f) or {}
             bindings = wf_cfg.get("bindings") or []
             comfy_input_root = Path(wf_cfg.get("comfy_input_root", str(comfy_input_root)))
-            gateway_subdir = wf_cfg.get("gateway_input_subdir", gateway_subdir)
             yaml_workflow_id = wf_cfg.get("workflow_id", workflow_id)
 
-        input_dir = comfy_input_root / gateway_subdir
+        input_dir = comfy_input_root
         input_dir.mkdir(parents=True, exist_ok=True)
 
         # Auto-generated runtime vars.
