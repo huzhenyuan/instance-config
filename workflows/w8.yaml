@@ -20,7 +20,7 @@ return_quality_sizes:
     width:  704
     height: 640
 
-comfy_input_root: /data/comfyui/input
+comfy_input_root: /workspace/ComfyUI/input
 gateway_input_subdir: gateway
 
 bindings:

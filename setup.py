@@ -123,6 +123,8 @@ VENV_PYTHON = Path("/venv/main/bin/python")
 async def install_nodes(nodes: list[dict], custom_nodes_dir: Path) -> None:
     custom_nodes_dir.mkdir(parents=True, exist_ok=True)
     python = str(VENV_PYTHON) if VENV_PYTHON.exists() else sys.executable
+    # Ensure setuptools/importlib_metadata are present (required by some node install.py scripts)
+    await _run(f'"{python}" -m pip install setuptools importlib_metadata -q', timeout=600)
     for node in nodes:
         repo: str = node.get("repo", "")
         if not repo:

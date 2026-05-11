@@ -15,7 +15,7 @@ return_quality_sizes:
     width:  720
     height: 1280
 
-comfy_input_root: /data/comfyui/input
+comfy_input_root: /workspace/ComfyUI/input
 gateway_input_subdir: gateway
 
 # Matching strategy is chosen in routing.build_w3_runtime based on per-face
