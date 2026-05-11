@@ -1,6 +1,7 @@
 # w4 Multi-reference → image (2 face refs + prompt → generated 2-person image).
 
 workflow_id: w4
+endpoint: image/compose
 description: "Multi-reference → image (2 people)"
 
 comfy_workflow_path: config/workflows/json/w4.json

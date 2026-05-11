@@ -1,6 +1,7 @@
 # w6 Video → Video (multi-stage; scene is re-rendered server-side).
 
 workflow_id: w6
+endpoint: video/enhance
 description: "Video → video (server-rendered scene)"
 
 # Multi-stage marker — dispatcher's multi-stage branch activates when this key

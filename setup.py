@@ -388,6 +388,30 @@ class InstanceAgent:
                 pass
 
     @staticmethod
+    def _build_endpoint_map() -> dict[str, str]:
+        """Scan all workflow YAMLs and build endpoint -> workflow_file mapping.
+
+        Each workflow YAML may declare an ``endpoint`` field that links it to a
+        gateway API endpoint.  This replaces the server-side workflows_mapping
+        config: the instance resolves the mapping locally from instance-config.
+        """
+        mapping: dict[str, str] = {}
+        yaml_dir = REPO_ROOT / "workflows"
+        for yaml_path in yaml_dir.glob("*.yaml"):
+            if yaml_path.name.startswith("_"):
+                continue
+            try:
+                with yaml_path.open() as f:
+                    cfg = yaml.safe_load(f) or {}
+                endpoint: str = cfg.get("endpoint", "")
+                workflow_id: str = cfg.get("workflow_id", "")
+                if endpoint and workflow_id:
+                    mapping[endpoint] = f"{workflow_id}.json"
+            except Exception:
+                pass
+        return mapping
+
+    @staticmethod
     async def _prepare_workflow(workflow_file: str, params: dict, task_id: str) -> dict:
         """Load workflow JSON and apply bindings from the companion YAML.
 
@@ -504,10 +528,15 @@ class InstanceAgent:
         comfyui = ComfyUIClient(ip="localhost", port=18188)
         try:
             logger.info("执行任务: %s", task_id)
-            workflow_file: str = task.get("workflow_file", "")
+            endpoint: str = task.get("endpoint", "")
             params: dict = task.get("payload", {})
+            if not endpoint:
+                raise ValueError("任务缺少 endpoint 字段")
+            # Resolve endpoint to workflow file using local instance-config
+            endpoint_map = self._build_endpoint_map()
+            workflow_file = endpoint_map.get(endpoint, "")
             if not workflow_file:
-                raise ValueError("任务缺少 workflow_file 字段")
+                raise ValueError(f"未知端点，无法映射到工作流: {endpoint}")
             workflow_file_content = await self._prepare_workflow(workflow_file, params, task_id)
             prompt_id = await comfyui.submit_prompt(workflow_file_content, client_id=f"container-{self._instance_id}")
             if not prompt_id:

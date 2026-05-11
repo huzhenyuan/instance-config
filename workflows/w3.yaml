@@ -1,6 +1,7 @@
 # w3 Multi-person face swap (2 people; per-person reference face).
 
 workflow_id: w3
+endpoint: image/swap-faces
 description: "Multi-person face swap"
 
 comfy_workflow_path: config/workflows/json/w3.json

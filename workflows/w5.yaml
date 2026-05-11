@@ -1,6 +1,7 @@
 # w5 Image → Video (portrait + prompt → short MP4).
 
 workflow_id: w5
+endpoint: video/generate-from-image
 description: "Image → video"
 
 comfy_workflow_path: config/workflows/json/w5.json

@@ -1,6 +1,7 @@
 # w1 Image → Image policy (single-person portrait, face + prompt → image).
 
 workflow_id: w1
+endpoint: image/generate-from-face
 description: "Image → Image — single-person portrait generation"
 
 comfy_workflow_path: config/workflows/json/w1.json

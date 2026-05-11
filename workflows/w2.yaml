@@ -1,6 +1,7 @@
 # w2 Single-person face swap (body preserved; face region replaced).
 
 workflow_id: w2
+endpoint: image/swap-face
 description: "Single-person face swap"
 
 comfy_workflow_path: config/workflows/json/w2.json

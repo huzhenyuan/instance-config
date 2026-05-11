@@ -1,6 +1,7 @@
 # w7 Video Face Swap (body/scene/audio preserved; face identity replaced).
 
 workflow_id: w7
+endpoint: video/swap-face
 description: "Video face swap"
 
 comfy_workflow_path: config/workflows/json/w7.json
