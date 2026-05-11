@@ -583,11 +583,21 @@ class InstanceAgent:
         return ComfyUIMessage(prompt_id=prompt_id, status="error", error="ComfyUI 任务执行超时")
 
     async def _push_result(self, task_id: str, result: dict, max_retries: int = 3) -> bool:
+        # Build result_path from ComfyUI output images if available
+        images: list[dict] = result.get("outputs", {}).get("images", [])
+        result_path: str = f"/results/{task_id}"
+        if images:
+            first = images[0]
+            subfolder = first.get("subfolder", "")
+            filename = first.get("filename", "")
+            if filename:
+                comfy_output_root = "/workspace/ComfyUI/output"
+                result_path = f"{comfy_output_root}/{subfolder}/{filename}" if subfolder else f"{comfy_output_root}/{filename}"
         payload = {
             "task_id": task_id,
             "instance_id": self._instance_id,
             "status": result.get("status", "failed"),
-            "result_path": f"/results/{task_id}",
+            "result_path": result_path,
             "error_message": result.get("error"),
         }
         for attempt in range(max_retries):
