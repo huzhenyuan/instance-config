@@ -583,21 +583,44 @@ class InstanceAgent:
         return ComfyUIMessage(prompt_id=prompt_id, status="error", error="ComfyUI 任务执行超时")
 
     async def _push_result(self, task_id: str, result: dict, max_retries: int = 3) -> bool:
-        # Build result_path from ComfyUI output images if available
+        # Upload output file(s) to server before pushing result metadata
         images: list[dict] = result.get("outputs", {}).get("images", [])
-        result_path: str = f"/results/{task_id}"
-        if images:
-            first = images[0]
-            subfolder = first.get("subfolder", "")
-            filename = first.get("filename", "")
-            if filename:
-                comfy_output_root = "/workspace/ComfyUI/output"
-                result_path = f"{comfy_output_root}/{subfolder}/{filename}" if subfolder else f"{comfy_output_root}/{filename}"
+        server_result_path: str | None = None
+        if result.get("status") == "completed" and images:
+            comfy_output_root = Path("/workspace/ComfyUI/output")
+            files_to_upload: list[Path] = []
+            for img in images:
+                subfolder = img.get("subfolder", "")
+                filename = img.get("filename", "")
+                if filename:
+                    p = comfy_output_root / subfolder / filename if subfolder else comfy_output_root / filename
+                    if p.exists():
+                        files_to_upload.append(p)
+            if files_to_upload:
+                try:
+                    async with httpx.AsyncClient(timeout=120.0) as c:
+                        upload_files = [
+                            ("file", (fp.name, fp.read_bytes(), "image/png" if fp.suffix == ".png" else "video/mp4"))
+                            for fp in files_to_upload
+                        ]
+                        resp = await c.post(
+                            f"{self._server}/instance/result_file/{task_id}",
+                            files=upload_files,
+                            headers=_make_auth_headers(),
+                        )
+                        if resp.status_code == 200:
+                            server_result_path = resp.json().get("primary")
+                            logger.info("[upload] 任务 %s 文件已上传: %s", task_id, server_result_path)
+                        else:
+                            logger.warning("[upload] 上传失败 %d: %s", resp.status_code, resp.text)
+                except Exception as exc:
+                    logger.warning("[upload] 上传异常: %s", exc)
+
         payload = {
             "task_id": task_id,
             "instance_id": self._instance_id,
             "status": result.get("status", "failed"),
-            "result_path": result_path,
+            "result_path": server_result_path or f"/results/{task_id}",
             "error_message": result.get("error"),
         }
         for attempt in range(max_retries):
