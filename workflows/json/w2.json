@@ -38,6 +38,7 @@
       "input_faces_index": "0",
       "source_faces_index": "0",
       "console_log_level": 1,
+      "check_nsfw": false,
       "face_boost": ["5", 0]
     }
   },
