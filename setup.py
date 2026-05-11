@@ -116,28 +116,28 @@ def _make_auth_headers() -> dict[str, str]:
 # Phase 1: Node installation
 # ---------------------------------------------------------------------------
 
+CM_CLI = Path("/workspace/ComfyUI/custom_nodes/ComfyUI-Manager/cm-cli.py")
+VENV_PYTHON = Path("/venv/main/bin/python")
+
+
 async def install_nodes(nodes: list[dict], custom_nodes_dir: Path) -> None:
     custom_nodes_dir.mkdir(parents=True, exist_ok=True)
+    python = str(VENV_PYTHON) if VENV_PYTHON.exists() else sys.executable
     for node in nodes:
         repo: str = node.get("repo", "")
-        pip_deps: list[str] = node.get("pip") or []
-        custom_subdir: str = node.get("custom_dir", "")
         if not repo:
             continue
         name = Path(repo).name.removesuffix(".git")
-        target = custom_nodes_dir / (custom_subdir or name)
-        if target.exists() and (target / ".git").exists():
-            logger.info("[nodes] SKIP (already cloned): %s", name)
-        else:
-            logger.info("[nodes] Cloning: %s → %s", repo, target)
-            ok = await _run(f'git clone --depth 1 "{repo}" "{target}"', timeout=300)
-            if not ok:
-                logger.error("[nodes] git clone failed: %s", repo)
-                continue
-        if pip_deps:
-            deps = " ".join(f'"{d}"' for d in pip_deps)
-            logger.info("[nodes] pip install %s", " ".join(pip_deps))
-            await _run(f"pip install {deps} --quiet", timeout=180)
+        if not CM_CLI.exists():
+            logger.error("[nodes] cm-cli.py not found at %s; skipping %s", CM_CLI, name)
+            continue
+        logger.info("[nodes] Installing via cm-cli: %s", repo)
+        ok = await _run(
+            f'"{python}" "{CM_CLI}" install "{repo}"',
+            timeout=600,
+        )
+        if not ok:
+            logger.error("[nodes] cm-cli install failed: %s", repo)
 
 
 # ---------------------------------------------------------------------------
