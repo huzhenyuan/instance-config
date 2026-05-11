@@ -537,6 +537,8 @@ class InstanceAgent:
             if not workflow_file:
                 raise ValueError(f"未知端点，无法映射到工作流: {endpoint}")
             workflow_file_content = await self._prepare_workflow(workflow_file, params, task_id)
+            # print workflow_file_content for current task in debug log
+            logger.debug("Prepared workflow for task %s (endpoint=%s): %s", task_id, endpoint, json.dumps(workflow_file_content, indent=2))
             prompt_id = await comfyui.submit_prompt(workflow_file_content, client_id=f"container-{self._instance_id}")
             if not prompt_id:
                 raise ValueError("ComfyUI 未返回 prompt_id")
