@@ -141,6 +141,15 @@ async def install_nodes(nodes: list[dict], custom_nodes_dir: Path) -> None:
         if not ok:
             logger.error("[nodes] cm-cli install failed: %s", repo)
 
+    # Reboot ComfyUI to load newly installed nodes
+    logger.info("[nodes] Rebooting ComfyUI to load new nodes...")
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as c:
+            await c.post("http://localhost:18188/api/manager/reboot")
+        logger.info("[nodes] ComfyUI reboot triggered")
+    except Exception as exc:
+        logger.warning("[nodes] ComfyUI reboot request failed (may be normal if not running): %s", exc)
+
 
 # ---------------------------------------------------------------------------
 # Phase 1: Model downloading
@@ -264,6 +273,8 @@ class ComfyUIClient:
     async def submit_prompt(self, graph: dict[str, Any], client_id: str) -> str:
         async with httpx.AsyncClient(timeout=self._timeout) as c:
             resp = await c.post(f"{self._base}/prompt", json={"prompt": graph, "client_id": client_id})
+            if not resp.is_success:
+                logger.error("[ComfyUI] submit_prompt failed %d: %s", resp.status_code, resp.text)
             resp.raise_for_status()
         prompt_id: str = resp.json().get("prompt_id", "")
         logger.info("[ComfyUI] prompt accepted, id=%s", prompt_id)
