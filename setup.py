@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
-AGENT_VERSION = "1.0.2"
+AGENT_VERSION = "1.0.3"
 LOG_FILE = "/var/log/gpus-agent.log"
 RUNTIME_REFRESH_SEC = 15
 
