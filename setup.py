@@ -375,6 +375,26 @@ class InstanceAgent:
             self._status = "idle"
             logger.info("[agent] provisioning done, switch status to idle")
 
+    async def _do_restart(self) -> None:
+        """执行 restart.sh 脚本以更新并重启客户端。"""
+        restart_script = Path(__file__).parent / "restart.sh"
+        logger.info("[agent] 执行 restart.sh: %s", restart_script)
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "bash", str(restart_script),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+            )
+            stdout, _ = await proc.communicate()
+            if stdout:
+                logger.info("[agent] restart.sh 输出: %s", stdout.decode(errors="replace").strip())
+            if proc.returncode != 0:
+                logger.error("[agent] restart.sh 退出码: %d", proc.returncode)
+            else:
+                logger.info("[agent] restart.sh 执行完成")
+        except Exception as exc:
+            logger.error("[agent] 执行 restart.sh 失败: %s", exc)
+
     def add_background_task(self, task: asyncio.Task) -> None:
         self._provision_task = task
 
@@ -417,6 +437,11 @@ class InstanceAgent:
                     resp = await c.post("/instance/heartbeat", json=payload, headers=_make_auth_headers())
                     if resp.status_code != 200:
                         logger.warning("[心跳] 异常: %d %s", resp.status_code, resp.text)
+                    else:
+                        data = resp.json()
+                        if data.get("action") == "restart":
+                            logger.info("[心跳] 收到重启指令，执行 restart.sh")
+                            asyncio.create_task(self._do_restart())
             except Exception as exc:
                 logger.warning("[心跳] 失败: %s", exc)
             try:
