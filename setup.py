@@ -1,12 +1,5 @@
 #!/usr/bin/env python3
 """Instance setup + agent runner.
-
-Environment variables:
-    SERVER_URL        — scheduler server base URL (default: http://localhost:8000)
-    CONTAINER_ID      — instance identifier
-    INSTANCE_API_SECRET — Bearer token for /instance/* API authentication (preferred)
-    INSTANCE_GROUP_NAME — group name passed at container launch
-    GPU_NAME          — GPU display name passed at container launch
 """
 
 from __future__ import annotations
@@ -20,6 +13,22 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
+
+AGENT_VERSION = "1.0.0"
+LOG_FILE = "/var/log/gpus-agent.log"
+RUNTIME_REFRESH_SEC = 15
+
+
+REPO_ROOT = Path(__file__).resolve().parent
+
+COMFYUI_ROOT = Path("/workspace/ComfyUI")
+COMFYUI_INPUT = COMFYUI_ROOT / "input"
+
+DEFAULT_CUSTOM_NODES_DIR = COMFYUI_ROOT / "custom_nodes"
+DEFAULT_MODELS_DIR = COMFYUI_ROOT / "models"
+
+CM_CLI = Path("/workspace/ComfyUI/custom_nodes/ComfyUI-Manager/cm-cli.py")
+VENV_PYTHON = Path("/venv/main/bin/python")
 
 # ---------------------------------------------------------------------------
 # Bootstrap dependencies if not present
@@ -39,17 +48,6 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 logger = logging.getLogger(__name__)
-
-REPO_ROOT = Path(__file__).resolve().parent
-
-COMFYUI_ROOT = Path("/workspace/ComfyUI")
-COMFYUI_INPUT = COMFYUI_ROOT / "input"
-
-DEFAULT_CUSTOM_NODES_DIR = COMFYUI_ROOT / "custom_nodes"
-DEFAULT_MODELS_DIR = COMFYUI_ROOT / "models"
-
-CM_CLI = Path("/workspace/ComfyUI/custom_nodes/ComfyUI-Manager/cm-cli.py")
-VENV_PYTHON = Path("/venv/main/bin/python")
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -285,9 +283,6 @@ class ComfyUIClient:
 
 
 class InstanceAgent:
-    _AGENT_VERSION = "1.0.0"
-    _LOG_FILE = "/var/log/gpus-agent.log"
-    _RUNTIME_REFRESH_SEC = 15
 
     def __init__(
         self,
@@ -352,14 +347,14 @@ class InstanceAgent:
 
     async def _collect_runtime_info(self) -> dict[str, str]:
         now = asyncio.get_running_loop().time()
-        if self._runtime_info_cache and (now - self._runtime_info_cache_at) < self._RUNTIME_REFRESH_SEC:
+        if self._runtime_info_cache and (now - self._runtime_info_cache_at) < RUNTIME_REFRESH_SEC:
             return self._runtime_info_cache
 
         top_out = await self._run_capture(["top", "-bn1"], timeout=6.0)
         mem_out = await self._run_capture(["free", "-h"], timeout=4.0)
 
         runtime_info = {
-            "agent_log_tail": self._tail_log_file(self._LOG_FILE, 200),
+            "agent_log_tail": self._tail_log_file(LOG_FILE, 200),
             "disk_free": await self._run_capture(["df", "-h"], timeout=5.0),
             "cpu_usage": top_out or "[cpu unavailable]",
             "memory_usage": mem_out or "[memory unavailable]",
@@ -430,7 +425,7 @@ class InstanceAgent:
                     "group_name": self._group_name,
                     "gpu_name": self._gpu_name,
                     "ip_address": self._public_ip,
-                    "agent_version": self._AGENT_VERSION,
+                    "agent_version": AGENT_VERSION,
                     "runtime_info": runtime_info,
                 }
                 async with httpx.AsyncClient(base_url=self._server, timeout=httpx.Timeout(10.0, connect=5.0)) as c:
