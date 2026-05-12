@@ -321,6 +321,7 @@ class InstanceAgent:
         self._instance_id = os.getenv("CONTAINER_ID", "")
         self._group_name = group_name
         self._gpu_name = gpu_name or os.getenv("GPU_NAME", "")
+        self._public_ip = os.getenv("PUBLIC_IPADDR", "")
         self._heartbeat_interval = heartbeat_interval
         self._poll_interval = poll_interval
         self._status = "provisioning"
@@ -435,6 +436,7 @@ class InstanceAgent:
             "current_task_id": self._current_task_id,
             "group_name": self._group_name,
             "gpu_name": self._gpu_name,
+            "ip_address": self._public_ip,
             "agent_version": self._AGENT_VERSION,
             "runtime_info": runtime_info,
         }
