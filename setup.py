@@ -371,24 +371,25 @@ class InstanceAgent:
             logger.info("[agent] provisioning done, switch status to idle")
 
     async def _do_restart(self) -> None:
-        """执行 restart.sh 脚本以更新并重启客户端。"""
+        """执行 restart.sh 脚本以更新并重启客户端。
+
+        restart.sh 会杀掉所有 setup.py 进程（含当前进程），因此必须在独立会话中
+        以脱离方式运行，否则父进程被杀后子进程也会随之退出。
+        """
         restart_script = Path(__file__).parent / "restart.sh"
-        logger.info("[agent] 执行 restart.sh: %s", restart_script)
+        logger.info("[agent] 启动独立会话执行 restart.sh: %s", restart_script)
         try:
-            proc = await asyncio.create_subprocess_exec(
+            # start_new_session=True 使子进程脱离当前进程组和终端，
+            # 这样 pkill -f setup.py 杀掉父进程后，restart.sh 仍能继续运行并拉起新进程。
+            await asyncio.create_subprocess_exec(
                 "bash", str(restart_script),
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.STDOUT,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+                start_new_session=True,
             )
-            stdout, _ = await proc.communicate()
-            if stdout:
-                logger.info("[agent] restart.sh 输出: %s", stdout.decode(errors="replace").strip())
-            if proc.returncode != 0:
-                logger.error("[agent] restart.sh 退出码: %d", proc.returncode)
-            else:
-                logger.info("[agent] restart.sh 执行完成")
+            logger.info("[agent] restart.sh 已在独立会话中启动，等待被杀...")
         except Exception as exc:
-            logger.error("[agent] 执行 restart.sh 失败: %s", exc)
+            logger.error("[agent] 启动 restart.sh 失败: %s", exc)
 
     def add_background_task(self, task: asyncio.Task) -> None:
         self._provision_task = task
