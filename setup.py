@@ -373,22 +373,14 @@ class InstanceAgent:
         if self._runtime_info_cache and (now - self._runtime_info_cache_at) < self._RUNTIME_REFRESH_SEC:
             return self._runtime_info_cache
 
-        cpu_line = ""
         top_out = await self._run_capture(["top", "-bn1"], timeout=6.0)
-        for line in top_out.splitlines():
-            if "Cpu(s)" in line or "%Cpu(s)" in line:
-                cpu_line = line.strip()
-                break
-
         mem_out = await self._run_capture(["free", "-h"], timeout=4.0)
-        mem_lines = mem_out.splitlines()
-        mem_summary = "\n".join(mem_lines[:2]) if len(mem_lines) >= 2 else mem_out
 
         runtime_info = {
             "agent_log_tail": self._tail_log_file(self._LOG_FILE, 200),
             "disk_free": await self._run_capture(["df", "-h"], timeout=5.0),
-            "cpu_usage": cpu_line or "[cpu unavailable]",
-            "memory_usage": mem_summary or "[memory unavailable]",
+            "cpu_usage": top_out or "[cpu unavailable]",
+            "memory_usage": mem_out or "[memory unavailable]",
             "gpu_info": await self._run_capture(["nvidia-smi"], timeout=8.0),
         }
 
