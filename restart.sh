@@ -15,8 +15,11 @@ if [ -z "$GROUP" ]; then
     exit 1
 fi
 
+SSH_KEY_PATH="/root/.ssh/instance_config_deploy_key"
+GIT_SSH="ssh -i \"$SSH_KEY_PATH\" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+
 echo "[restart] Pulling latest code..."
-git -C "$REPO_DIR" pull --ff-only
+GIT_SSH_COMMAND="$GIT_SSH" git -C "$REPO_DIR" pull --ff-only
 
 echo "[restart] Stopping existing setup.py (group=$GROUP)..."
 pkill -f "setup.py" 2>/dev/null || true
