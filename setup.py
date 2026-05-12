@@ -306,6 +306,8 @@ class ComfyUIClient:
 
 class InstanceAgent:
     _AGENT_VERSION = "1.0.0"
+    _LOG_FILE = "/var/log/gpus-agent.log"
+    _RUNTIME_REFRESH_SEC = 15
 
     def __init__(
         self,
@@ -324,8 +326,75 @@ class InstanceAgent:
         self._status = "provisioning"
         self._current_task_id: str | None = None
         self._current_task: dict | None = None
+        self._runtime_info_cache: dict[str, str] = {}
+        self._runtime_info_cache_at: float = 0.0
         self._stop = asyncio.Event()
         self._active_tasks: list[asyncio.Task] = []
+
+    @staticmethod
+    def _tail_log_file(path: str, max_lines: int = 200) -> str:
+        try:
+            proc = subprocess.run(
+                ["tail", "-n", str(max_lines), path],
+                capture_output=True,
+                text=True,
+                timeout=3,
+                check=False,
+            )
+            out = (proc.stdout or "").strip()
+            if out:
+                return out
+
+            if proc.stderr:
+                return f"[log unavailable] {proc.stderr.strip()}"
+
+            # Fallback: if tail returns empty unexpectedly, keep previous behavior.
+            with open(path, encoding="utf-8", errors="replace") as f:
+                lines = f.readlines()
+            return "".join(lines[-max_lines:]).strip()
+        except Exception as exc:
+            return f"[log unavailable] {exc}"
+
+    @staticmethod
+    async def _run_capture(cmd: list[str], timeout: float = 5.0) -> str:
+        def _run_sync() -> str:
+            try:
+                proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False)
+                out = (proc.stdout or "").strip()
+                err = (proc.stderr or "").strip()
+                return out or err
+            except Exception as exc:
+                return f"[command failed: {' '.join(cmd)}] {exc}"
+
+        return await asyncio.to_thread(_run_sync)
+
+    async def _collect_runtime_info(self) -> dict[str, str]:
+        now = asyncio.get_running_loop().time()
+        if self._runtime_info_cache and (now - self._runtime_info_cache_at) < self._RUNTIME_REFRESH_SEC:
+            return self._runtime_info_cache
+
+        cpu_line = ""
+        top_out = await self._run_capture(["top", "-bn1"], timeout=6.0)
+        for line in top_out.splitlines():
+            if "Cpu(s)" in line or "%Cpu(s)" in line:
+                cpu_line = line.strip()
+                break
+
+        mem_out = await self._run_capture(["free", "-h"], timeout=4.0)
+        mem_lines = mem_out.splitlines()
+        mem_summary = "\n".join(mem_lines[:2]) if len(mem_lines) >= 2 else mem_out
+
+        runtime_info = {
+            "agent_log_tail": self._tail_log_file(self._LOG_FILE, 200),
+            "disk_free": await self._run_capture(["df", "-h"], timeout=5.0),
+            "cpu_usage": cpu_line or "[cpu unavailable]",
+            "memory_usage": mem_summary or "[memory unavailable]",
+            "gpu_info": await self._run_capture(["nvidia-smi"], timeout=8.0),
+        }
+
+        self._runtime_info_cache = runtime_info
+        self._runtime_info_cache_at = now
+        return runtime_info
 
     def mark_provisioning_done(self) -> None:
         if self._status == "provisioning":
@@ -367,6 +436,7 @@ class InstanceAgent:
                 pass
 
     async def _send_heartbeat(self) -> None:
+        runtime_info = await self._collect_runtime_info()
         payload = {
             "instance_id": self._instance_id,
             "status": self._status,
@@ -374,6 +444,7 @@ class InstanceAgent:
             "group_name": self._group_name,
             "gpu_name": self._gpu_name,
             "agent_version": self._AGENT_VERSION,
+            "runtime_info": runtime_info,
         }
         async with httpx.AsyncClient(base_url=self._server, timeout=httpx.Timeout(10.0, connect=5.0)) as c:
             resp = await c.post("/instance/heartbeat", json=payload, headers=_make_auth_headers())
