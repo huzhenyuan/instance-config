@@ -1,10 +1,7 @@
 # w2 Single-person face swap (body preserved; face region replaced).
 
-workflow_id: w2
 endpoint: image/swap-face
 description: "Single-person face swap"
-
-comfy_input_root: /workspace/ComfyUI/input
 
 # NB: node-index mapping is the *opposite* of PRD field numbering.
 #   PRD  input_img_1 = target body  → bound at node 2

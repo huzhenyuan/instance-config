@@ -1,20 +1,10 @@
 #!/usr/bin/env python3
 """Instance setup + agent runner.
 
-Usage:
-    python3 setup.py <group_name>
-
-Phase 1 – Provision: installs custom ComfyUI nodes and downloads model files.
-Phase 2 – Agent loop: starts heartbeat + polling loops immediately and
-           executes ComfyUI tasks until the process is terminated.
-
 Environment variables:
-    CUSTOM_NODES_DIR  — default: /workspace/ComfyUI/custom_nodes
-    MODELS_DIR        — default: /workspace/ComfyUI/models
     SERVER_URL        — scheduler server base URL (default: http://localhost:8000)
     CONTAINER_ID      — instance identifier
     INSTANCE_API_SECRET — Bearer token for /instance/* API authentication (preferred)
-    HEARTBEAT_INTERVAL — seconds between heartbeats (default: 5)
     INSTANCE_GROUP_NAME — group name passed at container launch
     GPU_NAME          — GPU display name passed at container launch
 """
@@ -51,10 +41,15 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 REPO_ROOT = Path(__file__).resolve().parent
-COMFYUI_ROOT = Path("/workspace/ComfyUI")
-DEFAULT_CUSTOM_NODES_DIR = "/workspace/ComfyUI/custom_nodes"
-DEFAULT_MODELS_DIR = "/workspace/ComfyUI/models"
 
+COMFYUI_ROOT = Path("/workspace/ComfyUI")
+COMFYUI_INPUT = COMFYUI_ROOT / "input"
+
+DEFAULT_CUSTOM_NODES_DIR = COMFYUI_ROOT / "custom_nodes"
+DEFAULT_MODELS_DIR = COMFYUI_ROOT / "models"
+
+CM_CLI = Path("/workspace/ComfyUI/custom_nodes/ComfyUI-Manager/cm-cli.py")
+VENV_PYTHON = Path("/venv/main/bin/python")
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -112,14 +107,6 @@ def _make_auth_headers() -> dict[str, str]:
     return {"Authorization": f"Bearer {secret}"}
 
 
-# ---------------------------------------------------------------------------
-# Phase 1: Node installation
-# ---------------------------------------------------------------------------
-
-CM_CLI = Path("/workspace/ComfyUI/custom_nodes/ComfyUI-Manager/cm-cli.py")
-VENV_PYTHON = Path("/venv/main/bin/python")
-
-
 async def install_nodes(nodes: list[dict], custom_nodes_dir: Path) -> None:
     custom_nodes_dir.mkdir(parents=True, exist_ok=True)
     python = str(VENV_PYTHON) if VENV_PYTHON.exists() else sys.executable
@@ -150,10 +137,6 @@ async def install_nodes(nodes: list[dict], custom_nodes_dir: Path) -> None:
     except Exception as exc:
         logger.warning("[nodes] ComfyUI reboot request failed (may be normal if not running): %s", exc)
 
-
-# ---------------------------------------------------------------------------
-# Phase 1: Model downloading
-# ---------------------------------------------------------------------------
 
 async def download_models(models: list[dict], models_dir: Path) -> None:
     for model in models:
@@ -253,9 +236,6 @@ async def provision_in_background(group_name: str, on_finished: Callable[[], Non
             on_finished()
 
 
-# ---------------------------------------------------------------------------
-# Phase 2: Agent loop
-# ---------------------------------------------------------------------------
 
 @dataclass
 class ComfyUIMessage:
@@ -313,7 +293,7 @@ class InstanceAgent:
         self,
         server_url: str,
         heartbeat_interval: int = 5,
-        poll_interval: int = 5,
+        fetch_task_interval: int = 1,
         group_name: str = "",
         gpu_name: str = "",
     ):
@@ -323,14 +303,15 @@ class InstanceAgent:
         self._gpu_name = gpu_name or os.getenv("GPU_NAME", "")
         self._public_ip = os.getenv("PUBLIC_IPADDR", "")
         self._heartbeat_interval = heartbeat_interval
-        self._poll_interval = poll_interval
+        self._fetch_task_interval = fetch_task_interval
         self._status = "provisioning"
         self._current_task_id: str | None = None
         self._current_task: dict | None = None
         self._runtime_info_cache: dict[str, str] = {}
         self._runtime_info_cache_at: float = 0.0
         self._stop = asyncio.Event()
-        self._active_tasks: list[asyncio.Task] = []
+        self._provision_task: asyncio.Task | None = None
+        self._exec_task: asyncio.Task | None = None
 
     @staticmethod
     def _tail_log_file(path: str, max_lines: int = 200) -> str:
@@ -395,7 +376,7 @@ class InstanceAgent:
             logger.info("[agent] provisioning done, switch status to idle")
 
     def add_background_task(self, task: asyncio.Task) -> None:
-        self._active_tasks.append(task)
+        self._provision_task = task
 
     async def start(self) -> None:
         logger.info(
@@ -412,38 +393,36 @@ class InstanceAgent:
         finally:
             heartbeat_loop.cancel()
             fetch_task_loop.cancel()
-            for t in self._active_tasks:
+            pending = [t for t in (self._provision_task, self._exec_task) if t is not None]
+            for t in pending:
                 t.cancel()
-            await asyncio.gather(*self._active_tasks, return_exceptions=True)
+            await asyncio.gather(*pending, return_exceptions=True)
             logger.info("Agent 已停止")
 
     async def _heartbeat_loop(self) -> None:
         while not self._stop.is_set():
             try:
-                await self._send_heartbeat()
+                runtime_info = await self._collect_runtime_info()
+                payload = {
+                    "instance_id": self._instance_id,
+                    "status": self._status,
+                    "current_task_id": self._current_task_id,
+                    "group_name": self._group_name,
+                    "gpu_name": self._gpu_name,
+                    "ip_address": self._public_ip,
+                    "agent_version": self._AGENT_VERSION,
+                    "runtime_info": runtime_info,
+                }
+                async with httpx.AsyncClient(base_url=self._server, timeout=httpx.Timeout(10.0, connect=5.0)) as c:
+                    resp = await c.post("/instance/heartbeat", json=payload, headers=_make_auth_headers())
+                    if resp.status_code != 200:
+                        logger.warning("[心跳] 异常: %d %s", resp.status_code, resp.text)
             except Exception as exc:
                 logger.warning("[心跳] 失败: %s", exc)
             try:
                 await asyncio.wait_for(self._stop.wait(), timeout=self._heartbeat_interval)
             except asyncio.TimeoutError:
                 pass
-
-    async def _send_heartbeat(self) -> None:
-        runtime_info = await self._collect_runtime_info()
-        payload = {
-            "instance_id": self._instance_id,
-            "status": self._status,
-            "current_task_id": self._current_task_id,
-            "group_name": self._group_name,
-            "gpu_name": self._gpu_name,
-            "ip_address": self._public_ip,
-            "agent_version": self._AGENT_VERSION,
-            "runtime_info": runtime_info,
-        }
-        async with httpx.AsyncClient(base_url=self._server, timeout=httpx.Timeout(10.0, connect=5.0)) as c:
-            resp = await c.post("/instance/heartbeat", json=payload, headers=_make_auth_headers())
-            if resp.status_code != 200:
-                logger.warning("[心跳] 异常: %d %s", resp.status_code, resp.text)
 
     async def _fetch_task_loop(self) -> None:
         while not self._stop.is_set():
@@ -456,38 +435,13 @@ class InstanceAgent:
                             if tasks:
                                 self._current_task = tasks[0]
                                 self._status = "computing"
-                                t = asyncio.create_task(self._execute_comfyui_task())
-                                self._active_tasks.append(t)
+                                self._exec_task = asyncio.create_task(self._execute_comfyui_task())
                 except Exception as exc:
                     logger.warning("[轮询] 失败: %s", exc)
             try:
-                await asyncio.wait_for(self._stop.wait(), timeout=self._poll_interval)
+                await asyncio.wait_for(self._stop.wait(), timeout=self._fetch_task_interval)
             except asyncio.TimeoutError:
                 pass
-
-    @staticmethod
-    def _build_endpoint_map() -> dict[str, str]:
-        """Scan all workflow YAMLs and build endpoint -> workflow_file mapping.
-
-        Each workflow YAML may declare an ``endpoint`` field that links it to a
-        gateway API endpoint.  This replaces the server-side workflows_mapping
-        config: the instance resolves the mapping locally from instance-config.
-        """
-        mapping: dict[str, str] = {}
-        yaml_dir = REPO_ROOT / "workflows"
-        for yaml_path in yaml_dir.glob("*.yaml"):
-            if yaml_path.name.startswith("_"):
-                continue
-            try:
-                with yaml_path.open() as f:
-                    cfg = yaml.safe_load(f) or {}
-                endpoint: str = cfg.get("endpoint", "")
-                workflow_id: str = cfg.get("workflow_id", "")
-                if endpoint and workflow_id:
-                    mapping[endpoint] = f"{workflow_id}.json"
-            except Exception:
-                pass
-        return mapping
 
     @staticmethod
     async def _prepare_workflow(workflow_file: str, params: dict, task_id: str) -> dict:
@@ -514,22 +468,18 @@ class InstanceAgent:
         workflow_id = workflow_file.removesuffix(".json")
         yaml_path = REPO_ROOT / "workflows" / f"{workflow_id}.yaml"
         bindings: list[dict] = []
-        comfy_input_root = Path("/workspace/ComfyUI/input")
-        yaml_workflow_id = workflow_id
 
         if yaml_path.exists():
             with yaml_path.open() as f:
                 wf_cfg = yaml.safe_load(f) or {}
             bindings = wf_cfg.get("bindings") or []
-            comfy_input_root = Path(wf_cfg.get("comfy_input_root", str(comfy_input_root)))
-            yaml_workflow_id = wf_cfg.get("workflow_id", workflow_id)
 
-        input_dir = comfy_input_root
+        input_dir = COMFYUI_INPUT / workflow_id
         input_dir.mkdir(parents=True, exist_ok=True)
 
         # Auto-generated runtime vars.
         runtime: dict[str, Any] = {
-            "save_prefix": f"{yaml_workflow_id}/{task_id}",
+            "save_prefix": f"{workflow_id}/{task_id}",
             "seed": int.from_bytes(__import__("os").urandom(8), "big") & 0x7FFF_FFFF_FFFF_FFFF,
         }
 
@@ -571,7 +521,7 @@ class InstanceAgent:
                         resp = await client.get(url)
                         resp.raise_for_status()
                         local_path.write_bytes(resp.content)
-                value = str(local_path.relative_to(comfy_input_root))
+                value = str(local_path.relative_to(COMFYUI_INPUT))
                 logger.info("[binding] node %s .inputs.%s = %s", node_id, input_key, value)
 
             inputs_dict = node.get("inputs")
@@ -595,7 +545,19 @@ class InstanceAgent:
             if not endpoint:
                 raise ValueError("任务缺少 endpoint 字段")
             # Resolve endpoint to workflow file using local instance-config
-            endpoint_map = self._build_endpoint_map()
+            endpoint_map: dict[str, str] = {}
+            yaml_dir = REPO_ROOT / "workflows"
+            for yaml_path in yaml_dir.glob("*.yaml"):
+                if yaml_path.name.startswith("_"):
+                    continue
+                try:
+                    with yaml_path.open() as f:
+                        cfg = yaml.safe_load(f) or {}
+                    mapped_endpoint: str = cfg.get("endpoint", "")
+                    if mapped_endpoint:
+                        endpoint_map[mapped_endpoint] = f"{yaml_path.stem}.json"
+                except Exception:
+                    pass
             workflow_file = endpoint_map.get(endpoint, "")
             if not workflow_file:
                 raise ValueError(f"未知端点，无法映射到工作流: {endpoint}")
@@ -605,7 +567,18 @@ class InstanceAgent:
             prompt_id = await comfyui.submit_prompt(workflow_file_content, client_id=f"container-{self._instance_id}")
             if not prompt_id:
                 raise ValueError("ComfyUI 未返回 prompt_id")
-            msg = await self._poll_history(comfyui, prompt_id)
+            msg = ComfyUIMessage(prompt_id=prompt_id, status="error", error="ComfyUI 任务执行超时")
+            for attempt in range(360):
+                try:
+                    polled_msg = await comfyui.get_history(prompt_id)
+                    if polled_msg.status != "in_progress":
+                        msg = polled_msg
+                        break
+                except Exception as exc:
+                    logger.debug("[历史轮询] 第%d次异常: %s", attempt + 1, exc)
+                if attempt > 0 and attempt % 12 == 0:
+                    logger.info("[历史轮询] prompt_id=%s 等待中... (%ds)", prompt_id, attempt * 5)
+                await asyncio.sleep(5)
             result: dict = {"status": msg.status, "prompt_id": prompt_id, "outputs": msg.outputs}
             if msg.error:
                 result["error"] = msg.error
@@ -618,20 +591,7 @@ class InstanceAgent:
             self._current_task = None
             self._current_task_id = None
             self._status = "idle"
-            self._active_tasks = [t for t in self._active_tasks if not t.done()]
-
-    async def _poll_history(self, comfyui: ComfyUIClient, prompt_id: str, max_attempts: int = 360) -> ComfyUIMessage:
-        for attempt in range(max_attempts):
-            try:
-                msg = await comfyui.get_history(prompt_id)
-                if msg.status != "in_progress":
-                    return msg
-            except Exception as exc:
-                logger.debug("[历史轮询] 第%d次异常: %s", attempt + 1, exc)
-            if attempt > 0 and attempt % 12 == 0:
-                logger.info("[历史轮询] prompt_id=%s 等待中... (%ds)", prompt_id, attempt * 5)
-            await asyncio.sleep(5)
-        return ComfyUIMessage(prompt_id=prompt_id, status="error", error="ComfyUI 任务执行超时")
+            self._exec_task = None
 
     async def _push_result(self, task_id: str, result: dict, max_retries: int = 3) -> bool:
         # Upload output file(s) to server before pushing result metadata
@@ -709,7 +669,6 @@ if __name__ == "__main__":
             sys.exit(1)
         agent = InstanceAgent(
             server_url=os.getenv("SERVER_URL", "http://localhost:8000"),
-            heartbeat_interval=int(os.getenv("HEARTBEAT_INTERVAL", "5")),
             group_name=group_name,
             gpu_name=os.getenv("GPU_NAME", ""),
         )
