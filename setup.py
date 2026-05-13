@@ -291,8 +291,7 @@ class InstanceAgent:
         gpu_name: str = "",
     ):
         self._server = server_url.rstrip("/")
-        # _instance_id is  CONTAINER_ID   or  HOSTNAME
-        self._instance_id = os.getenv("CONTAINER_ID", "") or os.getenv("HOSTNAME", "")
+        self._instance_id = os.getenv("CONTAINER_ID", "") or f"stable-{os.getenv('HOSTNAME', '')}"
         self._group_name = group_name
         self._gpu_name = gpu_name or os.getenv("GPU_NAME", "")
         self._public_ip = os.getenv("PUBLIC_IPADDR", "")
