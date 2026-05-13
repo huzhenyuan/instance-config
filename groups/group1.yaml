@@ -8,7 +8,7 @@ nodes:
     pip: []
   - repo: "https://github.com/kijai/ComfyUI-segment-anything-2"
     pip: []
-  - repo: "https://github.com/Gourieff/ComfyUI-ReActor.git"
+  - repo: "https://github.com/rorge120ac/ComfyUI-ReActor.git"
     pip: []
   - repo: "https://github.com/kijai/ComfyUI-Florence2"
     pip: []
