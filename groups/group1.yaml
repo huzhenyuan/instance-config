@@ -2,7 +2,19 @@
 # workflows: face_detect, face_swap, multi_face_swap
 
 nodes:
+  - repo: "https://github.com/kijai/ComfyUI-KJNodes"
+    pip: []
+  - repo: "https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite"
+    pip: []
+  - repo: "https://github.com/kijai/ComfyUI-segment-anything-2"
+    pip: []
   - repo: "https://github.com/Gourieff/ComfyUI-ReActor.git"
+    pip: []
+  - repo: "https://github.com/kijai/ComfyUI-Florence2"
+    pip: []
+  - repo: "https://github.com/alimama-creative/SDXL_EcomID_ComfyUI.git"
+    pip: []
+  - repo: "https://github.com/bytedance/ComfyUI_InfiniteYou.git"
     pip: []
 
 models:
