@@ -163,7 +163,7 @@ async def download_models(models: list[dict], models_dir: Path) -> None:
             dest_file.unlink(missing_ok=True)
 
 
-def _load_group_setup_config(group_name: str) -> tuple[list[dict], list[dict], Path, Path]:
+def _load_group_setup_config(group_name: str) -> tuple[list[dict], list[dict]]:
     config_path = REPO_ROOT / "groups" / f"{group_name}.yaml"
     if not config_path.exists():
         raise FileNotFoundError(f"Group config not found: {config_path}")
@@ -173,9 +173,7 @@ def _load_group_setup_config(group_name: str) -> tuple[list[dict], list[dict], P
 
     nodes: list[dict] = cfg.get("nodes") or []
     models: list[dict] = cfg.get("models") or []
-    custom_nodes_dir = Path(os.getenv("CUSTOM_NODES_DIR", DEFAULT_CUSTOM_NODES_DIR))
-    models_dir = Path(os.getenv("MODELS_DIR", DEFAULT_MODELS_DIR))
-    return nodes, models, custom_nodes_dir, models_dir
+    return nodes, models
 
 
 async def _run_provision_jobs(nodes: list[dict], models: list[dict], custom_nodes_dir: Path, models_dir: Path) -> None:
@@ -217,14 +215,14 @@ async def provision_in_background(group_name: str, on_finished: Callable[[], Non
             )
             return
 
-        nodes, models, custom_nodes_dir, models_dir = _load_group_setup_config(group_name)
+        nodes, models = _load_group_setup_config(group_name)
         logger.info(
             "=== Background setup: group=%s, nodes=%d, models=%d ===",
             group_name,
             len(nodes),
             len(models),
         )
-        await _run_provision_jobs(nodes, models, custom_nodes_dir, models_dir)
+        await _run_provision_jobs(nodes, models, DEFAULT_CUSTOM_NODES_DIR, DEFAULT_MODELS_DIR)
 
         logger.info("=== Background setup complete: group=%s ===", group_name)
     except Exception:
@@ -293,7 +291,8 @@ class InstanceAgent:
         gpu_name: str = "",
     ):
         self._server = server_url.rstrip("/")
-        self._instance_id = os.getenv("CONTAINER_ID", "")
+        # _instance_id is  CONTAINER_ID   or  HOSTNAME
+        self._instance_id = os.getenv("CONTAINER_ID", "") or os.getenv("HOSTNAME", "")
         self._group_name = group_name
         self._gpu_name = gpu_name or os.getenv("GPU_NAME", "")
         self._public_ip = os.getenv("PUBLIC_IPADDR", "")
