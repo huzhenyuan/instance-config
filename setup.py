@@ -24,6 +24,9 @@ REPO_ROOT = Path(__file__).resolve().parent
 COMFYUI_ROOT = Path("/workspace/ComfyUI")
 COMFYUI_INPUT = COMFYUI_ROOT / "input"
 
+COMFYUI_PROXY_LISTEN_PORT = 28188   # 对外暴露的代理端口
+COMFYUI_PROXY_TARGET_PORT = 18188   # ComfyUI 实际监听端口（127.0.0.1）
+
 DEFAULT_CUSTOM_NODES_DIR = COMFYUI_ROOT / "custom_nodes"
 DEFAULT_MODELS_DIR = COMFYUI_ROOT / "models"
 
@@ -54,6 +57,49 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+async def _pipe(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+    try:
+        while True:
+            data = await reader.read(65536)
+            if not data:
+                break
+            writer.write(data)
+            await writer.drain()
+    except (asyncio.CancelledError, ConnectionResetError):
+        pass
+    finally:
+        writer.close()
+
+
+async def _proxy_handler(client_r: asyncio.StreamReader, client_w: asyncio.StreamWriter) -> None:
+    try:
+        target_r, target_w = await asyncio.open_connection("127.0.0.1", COMFYUI_PROXY_TARGET_PORT)
+    except OSError as exc:
+        logger.warning("[proxy] 连接 ComfyUI 失败: %s", exc)
+        client_w.close()
+        return
+    await asyncio.gather(
+        _pipe(client_r, target_w),
+        _pipe(target_r, client_w),
+        return_exceptions=True,
+    )
+
+
+async def start_comfyui_proxy() -> asyncio.Server:
+    """启动 TCP 代理：0.0.0.0:{COMFYUI_PROXY_LISTEN_PORT} → 127.0.0.1:{COMFYUI_PROXY_TARGET_PORT}"""
+    server = await asyncio.start_server(
+        _proxy_handler,
+        host="0.0.0.0",
+        port=COMFYUI_PROXY_LISTEN_PORT,
+    )
+    logger.info(
+        "[proxy] ComfyUI TCP 代理已启动: 0.0.0.0:%d → 127.0.0.1:%d",
+        COMFYUI_PROXY_LISTEN_PORT,
+        COMFYUI_PROXY_TARGET_PORT,
+    )
+    return server
+
 
 async def _run(cmd: str, timeout: int = 600) -> bool:
     """Run a shell command, stream output to logger, return True on success."""
@@ -400,6 +446,7 @@ class InstanceAgent:
             self._group_name,
             self._gpu_name,
         )
+        proxy_server = await start_comfyui_proxy()
         heartbeat_loop = asyncio.create_task(self._heartbeat_loop())
         fetch_task_loop = asyncio.create_task(self._fetch_task_loop())
         try:
@@ -407,6 +454,8 @@ class InstanceAgent:
         finally:
             heartbeat_loop.cancel()
             fetch_task_loop.cancel()
+            proxy_server.close()
+            await proxy_server.wait_closed()
             pending = [t for t in (self._provision_task, self._exec_task) if t is not None]
             for t in pending:
                 t.cancel()
