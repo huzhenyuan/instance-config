@@ -42,6 +42,8 @@ for _pkg in ("pyyaml", "httpx"):
 import yaml          # type: ignore[no-redef]
 import httpx         # type: ignore[no-redef]
 
+from status import InstanceStatus, TaskStatus
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
@@ -284,20 +286,18 @@ class InstanceAgent:
 
     def __init__(
         self,
-        server_url: str,
         heartbeat_interval: int = 5,
         fetch_task_interval: int = 1,
         group_name: str = "",
-        gpu_name: str = "",
     ):
-        self._server = server_url.rstrip("/")
+        self._server = os.getenv("SERVER_URL").rstrip("/")
         self._instance_id = os.getenv("CONTAINER_ID", "")
         self._group_name = group_name
-        self._gpu_name = gpu_name or os.getenv("GPU_NAME", "")
+        self._gpu_name = os.getenv("GPU_NAME", "")
         self._public_ip = os.getenv("PUBLIC_IPADDR", "")
         self._heartbeat_interval = heartbeat_interval
         self._fetch_task_interval = fetch_task_interval
-        self._status = "provisioning"
+        self._status = InstanceStatus.PROVISIONING
         self._current_task_id: str | None = None
         self._current_task: dict | None = None
         self._runtime_info_cache: dict[str, str] = {}
@@ -364,8 +364,8 @@ class InstanceAgent:
         return runtime_info
 
     def mark_provisioning_done(self) -> None:
-        if self._status == "provisioning":
-            self._status = "idle"
+        if self._status == InstanceStatus.PROVISIONING:
+            self._status = InstanceStatus.IDLE
             logger.info("[agent] provisioning done, switch status to idle")
 
     async def _do_restart(self) -> None:
@@ -445,7 +445,7 @@ class InstanceAgent:
 
     async def _fetch_task_loop(self) -> None:
         while not self._stop.is_set():
-            if self._status == "idle":
+            if self._status == InstanceStatus.IDLE:
                 try:
                     async with httpx.AsyncClient(base_url=self._server, timeout=httpx.Timeout(10.0)) as c:
                         resp = await c.post("/instance/fetch_task", json={"instance_id": self._instance_id}, headers=_make_auth_headers())
@@ -453,7 +453,7 @@ class InstanceAgent:
                             tasks = resp.json().get("tasks") or []
                             if tasks:
                                 self._current_task = tasks[0]
-                                self._status = "computing"
+                                self._status = InstanceStatus.COMPUTING
                                 self._exec_task = asyncio.create_task(self._execute_comfyui_task())
                 except Exception as exc:
                     logger.warning("[轮询] 失败: %s", exc)
@@ -597,26 +597,27 @@ class InstanceAgent:
                     logger.debug("[历史轮询] 第%d次异常: %s", attempt + 1, exc)
                 if attempt > 0 and attempt % 12 == 0:
                     logger.info("[历史轮询] prompt_id=%s 等待中... (%ds)", prompt_id, attempt * 5)
-                await asyncio.sleep(5)
+                await asyncio.sleep(0.2)
             result: dict = {"status": msg.status, "prompt_id": prompt_id, "outputs": msg.outputs}
             if msg.error:
                 result["error"] = msg.error
             if not await self._push_result(task_id, result):
-                await self._push_result(task_id, {"status": "failed", "error": "result push failed"})
+                await self._push_result(task_id, {"status": TaskStatus.FAILED, "error": "result push failed"})
         except Exception as exc:
             logger.error("任务 %s 失败: %s", task_id, exc)
-            await self._push_result(task_id, {"status": "failed", "error": str(exc)})
+            await self._push_result(task_id, {"status": TaskStatus.FAILED, "error": str(exc)})
         finally:
             self._current_task = None
             self._current_task_id = None
-            self._status = "idle"
+            self._status = InstanceStatus.IDLE
             self._exec_task = None
 
     async def _push_result(self, task_id: str, result: dict, max_retries: int = 3) -> bool:
         # Upload output file(s) to server before pushing result metadata
         images: list[dict] = result.get("outputs", {}).get("images", [])
+        # TODO 有些工作流可能会输出视频，后续可以根据 type 字段区分处理
         server_result_path: str | None = None
-        if result.get("status") == "completed" and images:
+        if result.get("status") == TaskStatus.COMPLETED and images:
             comfy_output_root = Path("/workspace/ComfyUI/output")
             files_to_upload: list[Path] = []
             for img in images:
@@ -649,7 +650,7 @@ class InstanceAgent:
         payload = {
             "task_id": task_id,
             "instance_id": self._instance_id,
-            "status": result.get("status", "failed"),
+            "status": result.get("status", TaskStatus.FAILED),
             "result_path": server_result_path or f"/results/{task_id}",
             "error_message": result.get("error"),
         }
@@ -686,11 +687,7 @@ if __name__ == "__main__":
         except FileNotFoundError as exc:
             logger.error("%s", exc)
             sys.exit(1)
-        agent = InstanceAgent(
-            server_url=os.getenv("SERVER_URL", "http://localhost:8000"),
-            group_name=group_name,
-            gpu_name=os.getenv("GPU_NAME", ""),
-        )
+        agent = InstanceAgent(group_name=group_name)
         setup_task = asyncio.create_task(
             provision_in_background(group_name, on_finished=agent.mark_provisioning_done)
         )
