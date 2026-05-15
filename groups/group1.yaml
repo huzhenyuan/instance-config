@@ -23,95 +23,117 @@ nodes:
 models:
   - url: "https://huggingface.co/rorge120ac/CyberRealisticPony/resolve/main/CyberRealisticPony_V17.0_FP16.safetensors"
     filename: "cyberrealistic-pony-v17.safetensors"
-    host_file: "/data/comfyui/models/checkpoints/cyberrealistic-pony-v17.safetensors"
+    hd_filename: "/data/models/checkpoints/cyberrealistic-pony-v17.safetensors"
     subfolder: "checkpoints"
 
   - url: "https://huggingface.co/rorge120ac/Qwen-Image-Edit-Rapid-AIO/resolve/main/v23/Qwen-Rapid-AIO-NSFW-v23.safetensors"
     filename: "Qwen-Rapid-AIO-NSFW-v23.safetensors"
+    hd_filename: "/data/models/checkpoints/Qwen-Rapid-AIO-NSFW-v23.safetensors"
     subfolder: "checkpoints"
 
   - url: "https://huggingface.co/rorge120ac/Wan2.2-Distill-Models/resolve/main/wan2.2_i2v_A14b_high_noise_scaled_fp8_e4m3_lightx2v_4step_comfyui_1030.safetensors"
     filename: "wan2.2_i2v_A14b_high_noise_scaled_fp8_e4m3_lightx2v_4step_comfyui_1030.safetensors"
+    hd_filename: "/data/models/diffusion_models/wan2.2_i2v_A14b_high_noise_scaled_fp8_e4m3_lightx2v_4step_comfyui_1030.safetensors"
     subfolder: "diffusion_models"
 
   - url: "https://huggingface.co/rorge120ac/Wan2.2-Distill-Models/resolve/main/wan2.2_i2v_A14b_low_noise_scaled_fp8_e4m3_lightx2v_4step_comfyui.safetensors"
     filename: "wan2.2_i2v_A14b_low_noise_scaled_fp8_e4m3_lightx2v_4step_comfyui.safetensors"
+    hd_filename: "/data/models/diffusion_models/wan2.2_i2v_A14b_low_noise_scaled_fp8_e4m3_lightx2v_4step_comfyui.safetensors"
     subfolder: "diffusion_models"
 
   - url: "https://huggingface.co/rorge120ac/wan2.2Lora/resolve/main/NSFW-22-H-e8.safetensors"
     filename: "NSFW-22-H-e8.safetensors"
+    hd_filename: "/data/models/loras/NSFW-22-H-e8.safetensors"
     subfolder: "lora"
 
   - url: "https://huggingface.co/rorge120ac/wan2.2Lora/resolve/main/NSFW-22-L-e8.safetensors"
     filename: "NSFW-22-L-e8.safetensors"
+    hd_filename: "/data/models/loras/NSFW-22-L-e8.safetensors"
     subfolder: "lora"
 
   - url: "https://huggingface.co/rorge120ac/testcelebmkr/resolve/main/POVkissing_WAN22_I2V_high_noise.safetensors"
     filename: "POVkissing_WAN22_I2V_high_noise.safetensors"
+    hd_filename: "/data/models/loras/POVkissing_WAN22_I2V_high_noise.safetensors"
     subfolder: "lora"
 
   - url: "https://huggingface.co/rorge120ac/testcelebmkr/resolve/main/POVkissing_WAN22_I2V_low_noise.safetensors"
     filename: "POVkissing_WAN22_I2V_low_noise.safetensors"
+    hd_filename: "/data/models/loras/POVkissing_WAN22_I2V_low_noise.safetensors"
     subfolder: "lora"
 
   - url: "https://huggingface.co/rorge120ac/encoder/resolve/main/umt5_xxl_fp8_e4m3fn_scaled.safetensors"
     filename: "umt5_xxl_fp8_e4m3fn_scaled.safetensors"
+    hd_filename: "/data/models/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors"
     subfolder: "text_encoders"
 
   - url: "https://huggingface.co/rorge120ac/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors"
     filename: "wan_2.1_vae.safetensors"
+    hd_filename: "/data/models/vae/wan_2.1_vae.safetensors"
     subfolder: "vae"
 
   - url: "https://huggingface.co/rorge120ac/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/clip_vision/clip_vision_h.safetensors"
     filename: "clip_vision_h.safetensors"
+    hd_filename: "/data/models/clip_vision/clip_vision_h.safetensors"
     subfolder: "clip_vision"
 
   - url: "https://huggingface.co/rorge120ac/Qwen-Image-Edit-2511-FP8/resolve/main/Qwen-Image-Edit-2511-FP8.safetensors"
     filename: "qwen_image_edit_2511_fp8.safetensors"
+    hd_filename: "/data/models/diffusion_models/qwen_image_edit_2511_fp8.safetensors"
     subfolder: "diffusion_models"
 
   - url: "https://huggingface.co/rorge120ac/Qwen-Image_ComfyUI/resolve/main/split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors"
     filename: "qwen_2.5_vl_7b_fp8.safetensors"
+    hd_filename: "/data/models/text_encoders/qwen_2.5_vl_7b_fp8.safetensors"
     subfolder: "text_encoders"
 
   - url: "https://huggingface.co/rorge120ac/Qwen-Image_ComfyUI/resolve/main/split_files/vae/qwen_image_vae.safetensors"
     filename: "qwen_image_vae.safetensors"
+    hd_filename: "/data/models/vae/qwen_image_vae.safetensors"
     subfolder: "vae"
 
   - url: "https://huggingface.co/rorge120ac/Qwen-Image-Lightning/resolve/main/Qwen-Image-Edit-Lightning-4steps-V1.0.safetensors"
     filename: "Qwen-Image-Edit-Lightning-4steps-V1.0.safetensors"
+    hd_filename: "/data/models/loras/Qwen-Image-Edit-Lightning-4steps-V1.0.safetensors"
     subfolder: "lora"
 
   - url: "https://huggingface.co/rorge120ac/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_fun_vace_high_noise_14B_fp8_scaled.safetensors"
     filename: "wan2.2_fun_vace_high_noise_14B_fp8_scaled.safetensors"
+    hd_filename: "/data/models/diffusion_models/wan2.2_fun_vace_high_noise_14B_fp8_scaled.safetensors"
     subfolder: "diffusion_models"
 
   - url: "https://huggingface.co/rorge120ac/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_fun_vace_low_noise_14B_fp8_scaled.safetensors"
     filename: "wan2.2_fun_vace_low_noise_14B_fp8_scaled.safetensors"
+    hd_filename: "/data/models/diffusion_models/wan2.2_fun_vace_low_noise_14B_fp8_scaled.safetensors"
     subfolder: "diffusion_models"
 
   - url: "https://huggingface.co/rorge120ac/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_t2v_lightx2v_4steps_lora_v1.1_high_noise.safetensors"
     filename: "wan2.2_t2v_lightx2v_4steps_lora_v1.1_high_noise.safetensors"
+    hd_filename: "/data/models/loras/wan2.2_t2v_lightx2v_4steps_lora_v1.1_high_noise.safetensors"
     subfolder: "lora"
 
   - url: "https://huggingface.co/rorge120ac/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_t2v_lightx2v_4steps_lora_v1.1_low_noise.safetensors"
     filename: "wan2.2_t2v_lightx2v_4steps_lora_v1.1_low_noise.safetensors"
+    hd_filename: "/data/models/loras/wan2.2_t2v_lightx2v_4steps_lora_v1.1_low_noise.safetensors"
     subfolder: "lora"
 
   - url: "https://huggingface.co/rorge120ac/wan2.2-Remix/resolve/main/NSFW/Wan2.2_Remix_NSFW_i2v_14b_low_lighting_fp8_e4m3fn_v3.0.safetensors"
     filename: "Wan2.2_Remix_NSFW_i2v_14b_low_lighting_fp8_e4m3fn_v3.0.safetensors"
+    hd_filename: "/data/models/diffusion_models/Wan2.2_Remix_NSFW_i2v_14b_low_lighting_fp8_e4m3fn_v3.0.safetensors"
     subfolder: "diffusion_models"
 
   - url: "https://huggingface.co/rorge120ac/wan2.2-Remix/resolve/main/NSFW/Wan2.2_Remix_NSFW_i2v_14b_high_lighting_fp8_e4m3fn_v3.0.safetensors"
     filename: "Wan2.2_Remix_NSFW_i2v_14b_high_lighting_fp8_e4m3fn_v3.0.safetensors"
+    hd_filename: "/data/models/diffusion_models/Wan2.2_Remix_NSFW_i2v_14b_high_lighting_fp8_e4m3fn_v3.0.safetensors"
     subfolder: "diffusion_models"
 
   - url: "https://huggingface.co/rorge120ac/Wan/resolve/main/wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors"
     filename: "wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors"
+    hd_filename: "/data/models/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors"
     subfolder: "lora"
 
   - url: "https://huggingface.co/rorge120ac/Wan/resolve/main/wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors"
     filename: "wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors"
+    hd_filename: "/data/models/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors"
     subfolder: "lora"
 
   # - url: "https://huggingface.co/Devia/G/resolve/main/inswapper_128.onnx"

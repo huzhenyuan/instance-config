@@ -184,16 +184,36 @@ async def install_nodes(nodes: list[dict], custom_nodes_dir: Path) -> None:
         logger.warning("[nodes] ComfyUI reboot request failed (may be normal if not running): %s", exc)
 
 
+_IS_STABLE_CONTAINER = os.getenv("CONTAINER_ID", "").startswith("stable-")
+
+
 async def download_models(models: list[dict], models_dir: Path) -> None:
     for model in models:
         url: str = model.get("url", "")
         filename: str = model.get("filename", "")
         subfolder: str = model.get("subfolder", "")
-        if not url or not filename:
+        hd_filename: str = model.get("hd_filename", "")
+        if not filename:
             continue
         dest_dir = models_dir / subfolder if subfolder else models_dir
         dest_dir.mkdir(parents=True, exist_ok=True)
         dest_file = dest_dir / filename
+
+        # For stable-* containers the /data volume is pre-populated; create a
+        # symlink instead of downloading when hd_filename is provided.
+        if _IS_STABLE_CONTAINER and hd_filename:
+            hd_path = Path(hd_filename)
+            if dest_file.is_symlink() and dest_file.resolve() == hd_path.resolve():
+                logger.info("[models] SKIP symlink already correct: %s", filename)
+                continue
+            if dest_file.exists() or dest_file.is_symlink():
+                dest_file.unlink()
+            dest_file.symlink_to(hd_path)
+            logger.info("[models] Symlinked: %s → %s", filename, hd_filename)
+            continue
+
+        if not url:
+            continue
         if dest_file.exists():
             size_mb = dest_file.stat().st_size / 1024 / 1024
             logger.info("[models] SKIP (exists, %.1f MB): %s", size_mb, filename)
