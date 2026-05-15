@@ -16,6 +16,12 @@ nodes:
     pip: []
   - repo: "https://github.com/bytedance/ComfyUI_InfiniteYou.git"
     pip: []
+  - repo: "https://github.com/pythongosssss/ComfyUI-Custom-Scripts.git
+    pip: []
+  - repo: "https://github.com/pythongosssss/ComfyUI-Custom-Scripts.git
+    pip: []
+  - repo: "https://github.com/yolain/ComfyUI-Easy-Use.git"
+    pip: []
 
 models:
   - url: "https://huggingface.co/cyberdelia/CyberRealisticPony/resolve/main/CyberRealisticPony_V17.0_FP16.safetensors"

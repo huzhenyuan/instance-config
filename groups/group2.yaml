@@ -2,10 +2,26 @@
 # workflows: face_combine
 
 nodes:
-  - repo: "https://github.com/Fannovel16/ControlNet-pp.git"
+  - repo: "https://github.com/kijai/ComfyUI-KJNodes"
     pip: []
-  - repo: "https://github.com/AUTOMATIC1111/stable-diffusion-webui.git"
-    pip: ["insightface", "onnxruntime"]
+  - repo: "https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite"
+    pip: []
+  - repo: "https://github.com/kijai/ComfyUI-segment-anything-2"
+    pip: []
+  - repo: "https://github.com/rorge120ac/ComfyUI-ReActor.git"
+    pip: []
+  - repo: "https://github.com/kijai/ComfyUI-Florence2"
+    pip: []
+  - repo: "https://github.com/alimama-creative/SDXL_EcomID_ComfyUI.git"
+    pip: []
+  - repo: "https://github.com/bytedance/ComfyUI_InfiniteYou.git"
+    pip: []
+  - repo: "https://github.com/pythongosssss/ComfyUI-Custom-Scripts.git
+    pip: []
+  - repo: "https://github.com/pythongosssss/ComfyUI-Custom-Scripts.git
+    pip: []
+  - repo: "https://github.com/yolain/ComfyUI-Easy-Use.git"
+    pip: []
 
 models:
   - url: "https://huggingface.co/lllyas1234/ponyF6RealisticV6/resolve/main/ponyF6RealisticV6PonyV6.safetensors"
