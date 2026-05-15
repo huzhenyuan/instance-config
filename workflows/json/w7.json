@@ -1,14 +1,20 @@
 {
   "1": {
-    "class_type": "LoadImage",
+    "class_type": "VHS_LoadVideo",
     "inputs": {
-      "image": "w1_v2/asian_08_portrait_closeup_eastasian.jpg"
+      "video": "PLACEHOLDER.mp4",
+      "force_rate": 0,
+      "custom_width": 0,
+      "custom_height": 0,
+      "frame_load_cap": 0,
+      "skip_first_frames": 0,
+      "select_every_nth": 1
     }
   },
   "2": {
     "class_type": "LoadImage",
     "inputs": {
-      "image": "w2_source/1.png"
+      "image": "PLACEHOLDER.png"
     }
   },
   "5": {
@@ -19,15 +25,15 @@
       "interpolation": "Lanczos",
       "visibility": 0.55,
       "codeformer_weight": 0.45,
-      "restore_with_main_after": true
+      "restore_with_main_after": false
     }
   },
   "3": {
     "class_type": "ReActorFaceSwap",
     "inputs": {
       "enabled": true,
-      "input_image": ["2", 0],
-      "source_image": ["1", 0],
+      "input_image": ["1", 0],
+      "source_image": ["2", 0],
       "swap_model": "inswapper_128.onnx",
       "facedetection": "retinaface_resnet50",
       "face_restore_model": "codeformer-v0.1.0.pth",
@@ -38,15 +44,20 @@
       "input_faces_index": "0",
       "source_faces_index": "0",
       "console_log_level": 1,
-
       "face_boost": ["5", 0]
     }
   },
   "4": {
-    "class_type": "SaveImage",
+    "class_type": "VHS_VideoCombine",
     "inputs": {
       "images": ["3", 0],
-      "filename_prefix": "w2/placeholder"
+      "audio": ["1", 2],
+      "frame_rate": 24,
+      "loop_count": 0,
+      "filename_prefix": "PLACEHOLDER",
+      "format": "video/h264-mp4",
+      "pingpong": false,
+      "save_output": true
     }
   }
 }
